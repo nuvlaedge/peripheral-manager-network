@@ -1,0 +1,133 @@
+
+
+import nmap
+import nmcli
+import socket
+import subprocess
+import logging
+import requests
+import sys
+import time
+from threading import Event
+import os
+import json
+
+
+identifier = 'ethernet'
+
+def init_logger():
+    """ Initializes logging """
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(levelname)s - %(funcName)s - %(message)s')
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+
+
+def wait_bootstrap(healthcheck_endpoint="http://agent/api/healthcheck"):
+    """ Simply waits for the NuvlaBox to finish bootstrapping, by pinging the Agent API
+    :returns
+    """
+
+    logging.info("Checking if NuvlaBox has been initialized...")
+
+    r = requests.get(healthcheck_endpoint)
+    
+    while not r.ok:
+        time.sleep(5)
+        r = requests.get(healthcheck_endpoint)
+
+    logging.info('NuvlaBox has been initialized.')
+    return
+
+def send(url, assets):
+    """ Sends POST request for registering new peripheral """
+
+    logging.info("Sending GPU information to Nuvla")
+    return publish(url, assets)
+
+
+def ethernetCheck(api_url):
+    """ Checks if peripheral already exists """
+
+    logging.info('Checking if Network Devices are already published')
+
+    get_ethernet = requests.get(api_url + '?identifier_pattern=' + identifier)
+    
+    logging.info(get_ethernet.json())
+
+    if not get_ethernet.ok or not isinstance(get_ethernet.json(), list) or len(get_ethernet.json()) == 0:
+        logging.info('No Network Device published.')
+        return True
+    
+    logging.info('Network Devices were already been published.')
+    return False
+
+
+def publish(url, assets):
+    """
+    API publishing function.
+    """
+
+    x = requests.post(url, json=assets)
+    return x.json()
+
+
+def ipAddr():
+    ip = str(subprocess.run(["hostname", "-I"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(' ')[0].replace("b'", "")
+    return ip
+
+
+def searchIP(deviceIp):
+    search = '{}.0/24'
+    ip = '.'.join(deviceIp.split('.')[:-1])
+    return search.format(ip)
+
+
+def nmapLocalSearch(searchIP):
+
+    output = {}
+
+    nm = nmap.PortScannerYield()
+
+    scan = nm.scan(hosts=searchIP, arguments='-sP')
+
+    for i in scan:
+        output[i['ip']] = i
+    
+    return output
+
+
+if __name__ == "__main__":
+
+    init_logger()
+
+    API_BASE_URL = "http://agent/api"
+
+    wait_bootstrap()
+
+    # API_URL = API_BASE_URL + "/peripheral"
+    # HOST_FILES = '/etc/nvidia-container-runtime/host-files-for-container.d/'
+    # RUNTIME_PATH = '/etc/docker/'
+
+    e = Event()
+
+    # while True:
+
+        # gpu_peripheral = flow(RUNTIME_PATH, HOST_FILES)
+
+        # if gpu_peripheral:
+        #     peripheral_already_registered = gpuCheck(API_URL)
+
+        #     if peripheral_already_registered:
+        #         send(API_URL, gpu_peripheral)
+
+        # e.wait(timeout=90)
+
+
+
+# print(nmapLocalSearch(searchIP(ipAddr())))
