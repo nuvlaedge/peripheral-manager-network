@@ -51,7 +51,7 @@ def send(url, assets):
     return publish(url, assets)
 
 
-def ethernetCheck(api_url):
+def ethernetCheck(api_url, currentNetwork):
     """ Checks if peripheral already exists """
 
     logging.info('Checking if Network Devices are already published')
@@ -64,6 +64,10 @@ def ethernetCheck(api_url):
         logging.info('No Network Device published.')
         return True
     
+    elif get_ethernet.json() != currentNetwork:
+        logging.info('Network has changed')
+        return True
+
     logging.info('Network Devices were already been published.')
     return False
 
@@ -92,12 +96,19 @@ def nmapLocalSearch(searchIP):
 
     output = {}
 
-    nm = nmap.PortScannerYield()
+    nm = nmap.PortScanner()
 
-    scan = nm.scan(hosts=searchIP, arguments='-sP')
+    scan = nm.scan(hosts=searchIP, arguments='-n -sP')
 
-    for i in scan:
-        output[i['ip']] = i
+    # print(scan)
+
+    for i in scan['scan']:
+    #     print(i)
+        try:
+            hostname = socket.gethostbyaddr(i)[0]
+        except:
+            hostname = ''
+        output[i] = {'status': scan['scan'][i]['status'], 'hostnames': hostname}
     
     return output
 
@@ -108,26 +119,23 @@ if __name__ == "__main__":
 
     API_BASE_URL = "http://agent/api"
 
-    wait_bootstrap()
+    # wait_bootstrap()
 
     # API_URL = API_BASE_URL + "/peripheral"
-    # HOST_FILES = '/etc/nvidia-container-runtime/host-files-for-container.d/'
-    # RUNTIME_PATH = '/etc/docker/'
+
 
     e = Event()
 
     # while True:
 
-        # gpu_peripheral = flow(RUNTIME_PATH, HOST_FILES)
+        # current_network = nmapLocalSearch(searchIP(ipAddr()))
 
-        # if gpu_peripheral:
-        #     peripheral_already_registered = gpuCheck(API_URL)
+        # if current_networkd:
+        #     peripheral_already_registered = ethernentCheck(API_URL, current_networkd)
 
         #     if peripheral_already_registered:
-        #         send(API_URL, gpu_peripheral)
+        #         send(API_URL, current_network)
 
         # e.wait(timeout=90)
 
 
-
-# print(nmapLocalSearch(searchIP(ipAddr())))
