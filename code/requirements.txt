@@ -1,0 +1,3 @@
+python-nmcli
+python-nmap
+requests

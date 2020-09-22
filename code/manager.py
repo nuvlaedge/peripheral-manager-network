@@ -119,23 +119,23 @@ if __name__ == "__main__":
 
     API_BASE_URL = "http://agent/api"
 
-    # wait_bootstrap()
+    wait_bootstrap()
 
-    # API_URL = API_BASE_URL + "/peripheral"
+    API_URL = API_BASE_URL + "/peripheral"
 
 
     e = Event()
 
-    # while True:
+    while True:
 
-        # current_network = nmapLocalSearch(searchIP(ipAddr()))
+        current_network = nmapLocalSearch(searchIP(ipAddr()))
 
-        # if current_networkd:
-        #     peripheral_already_registered = ethernentCheck(API_URL, current_networkd)
+        if current_networkd:
+            peripheral_already_registered = ethernentCheck(API_URL, current_networkd)
 
-        #     if peripheral_already_registered:
-        #         send(API_URL, current_network)
+            if peripheral_already_registered:
+                send(API_URL, current_network)
 
-        # e.wait(timeout=90)
+        e.wait(timeout=90)
 
 

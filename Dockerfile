@@ -1,11 +1,15 @@
-FROM python:3-alpine
+FROM python:3-buster
 
-RUN apk update && apk add nmap nmcli -y
+COPY code/requirements.txt /opt/nuvlabox/
 
-RUN rm -rf /var/cache/apk/*
+RUN apt update && apt install nmap -y
+
+RUN pip install -r /opt/nuvlabox/requirements.txt
+
+RUN rm -rf /var/cache/apt/*
 
 COPY code/ /opt/nuvlabox/
 
 WORKDIR /opt/nuvlabox/
 
-ENTRYPOINT ["manager.sh"]
+ENTRYPOINT ["python", "manager.py"]
