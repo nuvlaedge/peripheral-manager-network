@@ -130,8 +130,8 @@ if __name__ == "__main__":
 
         current_network = nmapLocalSearch(searchIP(ipAddr()))
 
-        if current_networkd:
-            peripheral_already_registered = ethernentCheck(API_URL, current_networkd)
+        if current_network:
+            peripheral_already_registered = ethernetCheck(API_URL, current_network)
 
             if peripheral_already_registered:
                 send(API_URL, current_network)

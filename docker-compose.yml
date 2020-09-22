@@ -5,6 +5,9 @@ services:
     build: .
     restart: on-failure
     network: host
+    privileged: True
+    volumes:
+      - /var/run/dbus:/var/run/dbus
     labels:
       - nuvlabox.component=True
       - nuvlabox.deployment=production

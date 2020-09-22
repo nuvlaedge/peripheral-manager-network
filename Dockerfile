@@ -2,7 +2,7 @@ FROM python:3-buster
 
 COPY code/requirements.txt /opt/nuvlabox/
 
-RUN apt update && apt install nmap -y
+RUN apt update && apt install nmap network-manager -y
 
 RUN pip install -r /opt/nuvlabox/requirements.txt
 
@@ -12,4 +12,4 @@ COPY code/ /opt/nuvlabox/
 
 WORKDIR /opt/nuvlabox/
 
-ENTRYPOINT ["python", "manager.py"]
+# ENTRYPOINT ["python", "manager.py"]
