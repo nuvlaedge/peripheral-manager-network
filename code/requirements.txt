@@ -1,3 +1,3 @@
-python-nmcli
+pynmcli
 python-nmap
 requests

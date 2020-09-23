@@ -1,7 +1,7 @@
 
 
 import nmap
-import nmcli
+import pynmcli
 import socket
 import subprocess
 import logging
@@ -72,6 +72,21 @@ def ethernetCheck(api_url, currentNetwork):
     return False
 
 
+def wifi_card():
+    
+    wifi = str(subprocess.run(["nmcli", "r", "wifi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).replace("b'", "")[:-3]
+    
+    if wifi == 'enabled':
+        return True
+    
+    return False
+
+
+def wifi_connection():
+
+    return pynmcli.get_data(pynmcli.NetworkManager.Device().wifi().execute())
+
+
 def publish(url, assets):
     """
     API publishing function.
@@ -82,11 +97,13 @@ def publish(url, assets):
 
 
 def ipAddr():
+
     ip = str(subprocess.run(["hostname", "-I"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(' ')[0].replace("b'", "")
     return ip
 
 
 def searchIP(deviceIp):
+    
     search = '{}.0/24'
     ip = '.'.join(deviceIp.split('.')[:-1])
     return search.format(ip)
@@ -100,10 +117,8 @@ def nmapLocalSearch(searchIP):
 
     scan = nm.scan(hosts=searchIP, arguments='-n -sP')
 
-    # print(scan)
-
     for i in scan['scan']:
-    #     print(i)
+
         try:
             hostname = socket.gethostbyaddr(i)[0]
         except:
@@ -112,6 +127,24 @@ def nmapLocalSearch(searchIP):
     
     return output
 
+
+def networkManager():
+
+    localIP = searchIP(ipAddr())
+
+    nmapSearch = nmapLocalSearch(localIP)
+    wifiSearch = wifi_connection()
+
+    output = {
+            'available': True,
+            'name': 'Network',
+            'classes': ['network'],
+            'identifier': identifier,
+            'additional-assets': {'ethernet-devices': nmapSearch, 'wifi-devices': wifiSearch}
+        }
+    
+    return output
+    
 
 if __name__ == "__main__":
 
@@ -123,12 +156,11 @@ if __name__ == "__main__":
 
     API_URL = API_BASE_URL + "/peripheral"
 
-
     e = Event()
 
     while True:
 
-        current_network = nmapLocalSearch(searchIP(ipAddr()))
+        current_network = networkManager()
 
         if current_network:
             peripheral_already_registered = ethernetCheck(API_URL, current_network)
