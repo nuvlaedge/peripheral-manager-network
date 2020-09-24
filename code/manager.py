@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+
+"""NuvlaBox Peripheral Manager Ethernet
+
+This service provides ethernet devices and wireless netowork discovery.
+
+"""
 
 
 import nmap
