@@ -166,7 +166,7 @@ def networkManager():
                 'classes': ['network'],
                 'identifier': identifier,
                 'interface': 'ethernet'
-            }   
+        }   
     
     return output
     
@@ -177,23 +177,22 @@ if __name__ == "__main__":
 
     API_BASE_URL = "http://agent/api"
 
-    # wait_bootstrap()
+    wait_bootstrap()
 
     API_URL = API_BASE_URL + "/peripheral"
 
-    # e = Event()
+    e = Event()
 
-    # while True:
+    while True:
 
-    #     current_network = networkManager()
+        current_network = networkManager()
 
-    #     if current_network:
-    #         peripheral_already_registered = ethernetCheck(API_URL, current_network)
+        if current_network:
+            peripheral_already_registered = ethernetCheck(API_URL, current_network)
 
-    #         if peripheral_already_registered:
-    #             send(API_URL, current_network)
+            if peripheral_already_registered:
+                send(API_URL, current_network)
 
-    #     e.wait(timeout=90)
+        e.wait(timeout=90)
 
 
-    print(networkManager())
