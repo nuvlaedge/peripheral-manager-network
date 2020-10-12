@@ -6,6 +6,12 @@
 This service provides ethernet device discovery.
 """
 
+# TODO:
+#  - Add check if device exists
+#  - Test full execution
+#  - Create Device file
+#  - Remove Device file
+
 
 import logging
 import requests
@@ -20,6 +26,8 @@ from xml.dom import minidom
 from urllib.parse import urlparse
 from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
 from zeroconf import ServiceBrowser, Zeroconf
+import zeroconf
+import threading
 
 
 def init_logger():
@@ -168,25 +176,56 @@ def wsDiscoveryManager():
     return manager
 
 
+def convertZeroConfAddr(addr_list):
+    addrs = []
+    for addr in addr_list:
+        addrs.append('.'.join([str(i) for i in list(addr)]))
+
+    return addrs
+
+
 def zeroConfManager():
     """
     Manages ZeroConf discoverable devices (Bonjour and Avahi)
+    This manager is run in side thread as its asynchrounous callback based
+        execution.
     """
 
+    services = {}
 
-class MyListener:
+    class MyListener:
 
-    def remove_service(self, zeroconf, type, name):
-        print("Service %s removed" % (name,))
+        def remove_service(self, zeroconf, type, name):
+            remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
+            print("Service %s removed" % (name,))
 
-    def add_service(self, zeroconf, type, name):
-        info = zeroconf.get_service_info(type, name)
-        print("Service %s added, service info: %s" % (name, info))
+        def add_service(self, zeroconf, type, name):
+            info = zeroconf.get_service_info(type, name)
+            output = {
+                "parent": '',
+                "version": '',
+                "available": True,
+                "name": name,
+                "classes": [],
+                "identifier": convertZeroConfAddr(info.addresses),
+                "interface": 'ZeroConf (Bonjour, Avahi)',
+            }
+
+            resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
+            services[name] = {'resource_id': resource_id}
+            print("Service %s added, service info: %s" % (name, info))
 
 
-zeroconf = Zeroconf()
-listener = MyListener()
-browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+    zeroconf = Zeroconf()
+    listener = MyListener()
+    browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+    try:
+        while True:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        zeroconf.close() 
 
 
 def ethernetManager(nuvlabox_id, nuvlabox_version):
@@ -240,7 +279,8 @@ if __name__ == "__main__":
     # NUVLABOX_ID = context['id']
 
     print('ETHERNET MANAGER STARTED')
-
+    zeroConfManager()
+       
     # init_logger()
 
     # API_URL = "https://nuvla.io"
@@ -250,7 +290,8 @@ if __name__ == "__main__":
     # e = Event()
 
     # devices = {}
-    print(ethernetManager('', ''))
+    zero_conf_thread = threading.Thread(target=zeroConfManager, args=(1,))
+    # print(ethernetManager('', ''))
     # while True:
 
     #     current_devices = ethernetManager(NUVLABOX_ID, NUVLABOX_VERSION)
