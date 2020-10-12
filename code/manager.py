@@ -3,26 +3,24 @@
 # -*- coding: utf-8 -*-
 
 """NuvlaBox Peripheral Manager Ethernet
-
-This service provides ethernet devices and wireless netowork discovery.
-
+This service provides ethernet device discovery.
 """
 
 
-import nmap
-import pynmcli
-import socket
-import subprocess
 import logging
 import requests
 import sys
 import time
 from threading import Event
-import os
 import json
+from nuvla.api import Api
+import os
+from ssdpy import SSDPClient
+from xml.dom import minidom
+from urllib.parse import urlparse
+from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
+from zeroconf import ServiceBrowser, Zeroconf
 
-
-identifier = 'ethernet'
 
 def init_logger():
     """ Initializes logging """
@@ -37,162 +35,257 @@ def init_logger():
     root.addHandler(handler)
 
 
-def wait_bootstrap(healthcheck_endpoint="http://agent/api/healthcheck"):
-    """ Simply waits for the NuvlaBox to finish bootstrapping, by pinging the Agent API
+def wait_bootstrap(context_file):
+    """
+    Waits for the NuvlaBox to finish bootstrapping, by checking
+        the context file.
     :returns
     """
+    is_context_file = False
 
-    logging.info("Checking if NuvlaBox has been initialized...")
-
-    r = requests.get(healthcheck_endpoint)
-    
-    while not r.ok:
+    while not is_context_file:
         time.sleep(5)
-        r = requests.get(healthcheck_endpoint)
+        if os.path.isfile(context_file):
+            is_context_file = True
 
     logging.info('NuvlaBox has been initialized.')
     return
 
-def send(url, assets):
-    """ Sends POST request for registering new peripheral """
 
-    logging.info("Sending GPU information to Nuvla")
-    return publish(url, assets)
-
-
-def ethernetCheck(api_url, currentNetwork):
+def ethernetCheck(peripheral_dir, mac_addr):
     """ Checks if peripheral already exists """
+    # TODO
+    return True
 
-    logging.info('Checking if Network Devices are already published')
-
-    get_ethernet = requests.get(api_url + '?identifier_pattern=' + identifier)
-    
-    logging.info(get_ethernet.json())
-
-    if not get_ethernet.ok or not isinstance(get_ethernet.json(), list) or len(get_ethernet.json()) == 0:
-        logging.info('No Network Device published.')
-        return True
-    
-    elif get_ethernet.json() != currentNetwork:
-        logging.info('Network has changed')
-        return True
-
-    logging.info('Network Devices were already been published.')
-    return False
-
-
-def wifi_card():
-    
-    wifi = str(subprocess.run(["nmcli", "r", "wifi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).replace("b'", "")[:-3]
-    
-    if wifi == 'enabled':
-        return True
-    
-    return False
-
-
-def wifi_connection():
-
-    # TODO: Create a cleaner dict
-    return pynmcli.get_data(pynmcli.NetworkManager.Device().wifi().execute())
-
-
-def publish(url, assets):
+def createDeviceFile(device_mac_addr, device_file, peripheral_dir):
     """
-    API publishing function.
+    Creates a device file on peripheral folder.
     """
 
-    x = requests.post(url, json=assets)
-    return x.json()
+    #TODO: filepath
+    file_path = ''
+
+    with open(file_path, 'w') as outfile:
+        json.dump(device_file, outfile)
 
 
-def ipAddr():
+def removeDeviceFile(device_mac_addr, peripheral_dir):
+    """
+    Removes a device file from the peripheral folder
+    """
+    #TODO: filepath
+    file_path = ''
 
-    ip = str(subprocess.run(["hostname", "-I"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout).split(' ')[0].replace("b'", "")
-    return ip
-
-
-def searchIP(deviceIp):
-    
-    search = '{}.0/24'
-    ip = '.'.join(deviceIp.split('.')[:-1])
-    return search.format(ip)
+    os.unlink(file_path)
 
 
-def nmapLocalSearch(searchIP):
+def readDeviceFile(device_mac_addr, peripheral_dir):
+    """
+    Reads a device file from the peripheral folder.
+    """
+
+    #TODO: filepath
+    file_path = ''
+    return json.load(open(file_path))
+
+
+def XMLGetNodeText(node):
+    """
+    Return text contents of an XML node.
+    """
+    text = []
+    for childNode in node.childNodes:
+        if childNode.nodeType == node.TEXT_NODE:
+            text.append(childNode.data)
+    return(''.join(text))
+
+
+def getDeviceSchema(path):
+    r = requests.get(path)
+    tree = minidom.parseString(r.content)
+    return tree
+
+
+def getBaseIP(schema, location):
+    base_url_elem = schema.getElementsByTagName('URLBase')
+    if base_url_elem:
+        base_url = XMLGetNodeText(base_url_elem[0]).rstrip('/')
+    else:
+        url = urlparse(location)
+        base_url = '%s://%s' % (url.scheme, url.netloc)
+
+    return base_url
+
+def ssdpManager():
+    """
+    Manages SSDP discoverable devices (SSDP and UPnP devices)
+    """
+    client = SSDPClient()
+    devices = client.m_search("ssdp:all")
+    manager = {}
+
+    for device in devices:
+        schema = getDeviceSchema(device['location'])
+        ip = getBaseIP(schema, device['location'])
+        device_info = schema.getElementsByTagName('device')[0]
+        name =  XMLGetNodeText(device_info.getElementsByTagName('friendlyName')[0])
+        if name not in manager.keys():
+            output = {
+                "parent": '',
+                "version": '',
+                "available": True,
+                "name": name,
+                "classes": [],
+                "identifier": ip,
+                "interface": 'SSDP',
+            }
+            manager[name] = output
+    return manager
+
+
+def wsDiscoveryManager():
+    """
+    Manages WSDiscovery discoverable devices
+    """
+    manager = {}
+
+    wsd = WSDiscovery()
+    wsd.start()
+    services = wsd.searchServices()
+    for service in services:
+        if service.getEPR() not in manager.keys():
+            output = {
+                    "parent": '',
+                    "version": '',
+                    "available": True,
+                    "name": service.getEPR(),
+                    "classes": service.getTypes(),
+                    "identifier": service.getXAddrs(),
+                    "interface": 'WSDiscovery',
+                }
+            manager[service.getEPR()] = output
+
+    return manager
+
+
+def zeroConfManager():
+    """
+    Manages ZeroConf discoverable devices (Bonjour and Avahi)
+    """
+
+
+class MyListener:
+
+    def remove_service(self, zeroconf, type, name):
+        print("Service %s removed" % (name,))
+
+    def add_service(self, zeroconf, type, name):
+        info = zeroconf.get_service_info(type, name)
+        print("Service %s added, service info: %s" % (name, info))
+
+
+zeroconf = Zeroconf()
+listener = MyListener()
+browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+
+
+def ethernetManager(nuvlabox_id, nuvlabox_version):
 
     output = {}
-
-    nm = nmap.PortScanner()
-
-    scan = nm.scan(hosts=searchIP, arguments='-n -sP')
-
-    for i in scan['scan']:
-
-        try:
-            hostname = socket.gethostbyaddr(i)[0]
-        except:
-            hostname = ''
-        output[i] = {'status': scan['scan'][i]['status'], 'hostnames': hostname}
-    
+    ssdp_output = ssdpManager()
+    ws_discovery_output = wsDiscoveryManager()
+    output.update(ssdp_output)
+    output.update(ws_discovery_output)
     return output
 
 
-def networkManager():
+def add(data, api_url, activated_path, cookies_file):
 
-    localIP = searchIP(ipAddr())
-    
-    try:
-        hostname = socket.gethostbyaddr(localIP)
-    except:
-        hostname = localIP
+    api = Api(api_url)
 
-    nmapSearch = nmapLocalSearch(localIP)
-    wifiSearch = wifi_connection()
+    activated = json.load(open(activated_path))
+    api_key = activated['api-key']
+    secret_key = activated['secret-key']
+    
+    api.login_apikey(api_key, secret_key)
 
-    if len(nmapSearch) != 0: 
-        output = {
-                'available': True,
-                'name': hostname,
-                'classes': ['network'],
-                'identifier': identifier,
-                'interface': 'ethernet'
-                'additional-assets': {'ethernet-devices': nmapSearch, 'wifi-devices': wifiSearch}
-            }
-    else:
-        output = {
-                'available': False,
-                'name': hostname,
-                'classes': ['network'],
-                'identifier': identifier,
-                'interface': 'ethernet'
-        }   
+    response = api.add('nuvlabox-peripheral', data).data
+    return response['resource-id']
+
+
+def remove(resource_id, api_url, activated_path, cookies_file):
     
-    return output
+    api = Api(api_url)
+
+    activated = json.load(open(activated_path))
+    api_key = activated['api-key']
+    secret_key = activated['secret-key']
     
+    api.login_apikey(api_key, secret_key)
+
+    response = api.delete(resource_id).data
+    return response['resource-id']
+
 
 if __name__ == "__main__":
 
-    init_logger()
+    # activated_path = '/srv/nuvlabox/shared/.activated'
+    # context_path = '/srv/nuvlabox/shared/.context'
+    # cookies_file = '/srv/nuvlabox/shared/cookies'
+    # peripheral_path = '/srv/nuvlabox/shared/peripherals'
 
-    API_BASE_URL = "http://agent/api"
+    # context = json.load(open(context_path))
 
-    wait_bootstrap()
+    # NUVLABOX_VERSION = context['version']
+    # NUVLABOX_ID = context['id']
 
-    API_URL = API_BASE_URL + "/peripheral"
+    print('ETHERNET MANAGER STARTED')
 
-    e = Event()
+    # init_logger()
 
-    while True:
+    # API_URL = "https://nuvla.io"
 
-        current_network = networkManager()
+    # wait_bootstrap(context_path)
 
-        if current_network:
-            peripheral_already_registered = ethernetCheck(API_URL, current_network)
+    # e = Event()
 
-            if peripheral_already_registered:
-                send(API_URL, current_network)
+    # devices = {}
+    print(ethernetManager('', ''))
+    # while True:
 
-        e.wait(timeout=90)
+    #     current_devices = ethernetManager(NUVLABOX_ID, NUVLABOX_VERSION)
+    #     print('CURRENT DEVICES: {}\n'.format(current_devices), flush=True)
+        
+    #     if current_devices != devices and current_devices:
+
+    #         devices_set = set(devices.keys())
+    #         current_devices_set = set(current_devices.keys())
+
+    #         publishing = current_devices_set - devices_set
+    #         removing = devices_set - current_devices_set
+
+    #         for device in publishing:
+
+    #             peripheral_already_registered = \
+    #                 ethernetCheck(API_URL, current_devices[device])
+
+    #             if not peripheral_already_registered:
+
+    #                 print('PUBLISHING: {}'.format(current_devices[device]), flush=True)
+    #                 resource_id = add(current_devices[device], 'https://nuvla.io', activated_path, cookies_file)
+    #                 devices[device] = {'resource_id': resource_id, 'message': current_devices[device]}
+    #                 createDeviceFile(device, devices[device], peripheral_path)
 
 
+    #         for device in removing:
+
+    #             peripheral_already_registered = \
+    #                 ethernetCheck(API_URL, devices[device])
+
+    #             if peripheral_already_registered:
+    #                 print('REMOVING: {}'.format(devices[device]), flush=True)
+    #                 read_file = readDeviceFile(device, peripheral_path)
+    #                 remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
+    #                 del devices[device]
+    #                 removeDeviceFile(device, peripheral_path)
+    #     e.wait(timeout=90)
