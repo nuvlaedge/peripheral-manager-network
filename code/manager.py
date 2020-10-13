@@ -7,10 +7,7 @@ This service provides ethernet device discovery.
 """
 
 # TODO:
-#  - Add check if device exists
 #  - Test full execution
-#  - Create Device file
-#  - Remove Device file
 
 
 import logging
@@ -61,29 +58,33 @@ def wait_bootstrap(context_file):
     return
 
 
-def ethernetCheck(peripheral_dir, mac_addr):
-    """ Checks if peripheral already exists """
-    # TODO
-    return True
+def ethernetCheck(peripheral_dir, type, device_addr):
+    """ 
+    Checks if peripheral already exists 
+    """
+    file_path = '{}-{}'.format(type, device_addr)
+    if file_path in os.listdir(peripheral_dir):
+        return True
+    return False
 
-def createDeviceFile(device_mac_addr, device_file, peripheral_dir):
+
+def createDeviceFile(type, device_addr, device_file, peripheral_dir):
     """
     Creates a device file on peripheral folder.
     """
 
-    #TODO: filepath
-    file_path = ''
+    file_path = '{}-{}'.format(type, device_addr)
 
     with open(file_path, 'w') as outfile:
         json.dump(device_file, outfile)
 
 
-def removeDeviceFile(device_mac_addr, peripheral_dir):
+def removeDeviceFile(type, device_addr, peripheral_dir):
     """
     Removes a device file from the peripheral folder
     """
-    #TODO: filepath
-    file_path = ''
+
+    file_path = '{}-{}'.format(type, device_addr)
 
     os.unlink(file_path)
 
