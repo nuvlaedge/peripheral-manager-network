@@ -110,12 +110,18 @@ def XMLGetNodeText(node):
 
 
 def getDeviceSchema(path):
+    """
+    Requests and parses XML file with information from SSDP
+    """
     r = requests.get(path)
     tree = minidom.parseString(r.content)
     return tree
 
 
 def getBaseIP(schema, location):
+    """
+    Returns the IP address from SSDP.
+    """
     base_url_elem = schema.getElementsByTagName('URLBase')
     if base_url_elem:
         base_url = XMLGetNodeText(base_url_elem[0]).rstrip('/')
@@ -178,6 +184,9 @@ def wsDiscoveryManager():
 
 
 def convertZeroConfAddr(addr_list):
+    """
+    Converts IP Addresses from Zeroconf
+    """
     addrs = []
     for addr in addr_list:
         addrs.append('.'.join([str(i) for i in list(addr)]))
@@ -230,6 +239,9 @@ def zeroConfManager():
 
 
 def ethernetManager(nuvlabox_id, nuvlabox_version):
+    """
+    Runs and manages the outputs from the discovery.
+    """
 
     output = {}
     ssdp_output = ssdpManager()
@@ -240,7 +252,9 @@ def ethernetManager(nuvlabox_id, nuvlabox_version):
 
 
 def add(data, api_url, activated_path, cookies_file):
-
+    """
+    Sends information from ethernet devices to Nuvla.
+    """
     api = Api(api_url)
 
     activated = json.load(open(activated_path))
@@ -254,7 +268,9 @@ def add(data, api_url, activated_path, cookies_file):
 
 
 def remove(resource_id, api_url, activated_path, cookies_file):
-    
+    """
+    Removes a ethernet device from  Nuvla.
+    """
     api = Api(api_url)
 
     activated = json.load(open(activated_path))
