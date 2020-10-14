@@ -6,10 +6,6 @@
 This service provides ethernet device discovery.
 """
 
-# TODO:
-#  - Test full execution
-
-
 import logging
 import requests
 import sys
@@ -112,9 +108,11 @@ def XMLGetNodeText(node):
     Return text contents of an XML node.
     """
     text = []
+
     for childNode in node.childNodes:
         if childNode.nodeType == node.TEXT_NODE:
             text.append(childNode.data)
+
     return(''.join(text))
 
 
@@ -122,6 +120,7 @@ def getDeviceSchema(path):
     """
     Requests and parses XML file with information from SSDP
     """
+    print(path)
     r = requests.get(path)
     tree = minidom.parseString(r.content)
     return tree
@@ -132,6 +131,7 @@ def getBaseIP(schema, location):
     Returns the IP address from SSDP.
     """
     base_url_elem = schema.getElementsByTagName('URLBase')
+
     if base_url_elem:
         base_url = XMLGetNodeText(base_url_elem[0]).rstrip('/')
     else:
@@ -141,34 +141,41 @@ def getBaseIP(schema, location):
     return base_url
 
 
-def ssdpManager():
+def ssdpManager(nuvlabox_id, nuvlabox_version):
     """
     Manages SSDP discoverable devices (SSDP and UPnP devices)
     """
+
     client = SSDPClient()
     devices = client.m_search("ssdp:all")
     manager = {}
 
     for device in devices:
-        schema = getDeviceSchema(device['location'])
-        ip = getBaseIP(schema, device['location'])
-        device_info = schema.getElementsByTagName('device')[0]
-        name =  XMLGetNodeText(device_info.getElementsByTagName('friendlyName')[0])
-        if name not in manager.keys():
-            output = {
-                "parent": '',
-                "version": '',
-                "available": True,
-                "name": name,
-                "classes": [],
-                "identifier": ip,
-                "interface": 'SSDP',
-            }
-            manager[name] = output
+        try:
+            schema = getDeviceSchema(device['location'])
+            ip = getBaseIP(schema, device['location'])
+            device_info = schema.getElementsByTagName('device')[0]
+            name =  XMLGetNodeText(device_info.getElementsByTagName('friendlyName')[0])
+
+            if name not in manager.keys():
+                output = {
+                    "parent": nuvlabox_id,
+                    "version": nuvlabox_version,
+                    "available": True,
+                    "name": name,
+                    "classes": [],
+                    "identifier": ip,
+                    "interface": 'SSDP',
+                }
+
+                manager[name] = output
+        except:
+            pass
+
     return manager
 
 
-def wsDiscoveryManager():
+def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
     """
     Manages WSDiscovery discoverable devices
     """
@@ -180,12 +187,12 @@ def wsDiscoveryManager():
     for service in services:
         if service.getEPR() not in manager.keys():
             output = {
-                    "parent": '',
-                    "version": '',
+                    "parent": nuvlabox_id,
+                    "version": nuvlabox_version,
                     "available": True,
                     "name": service.getEPR(),
                     "classes": [str(c) for c in service.getTypes()],
-                    "identifier": service.getXAddrs(),
+                    "identifier": service.getXAddrs()[0],
                     "interface": 'WSDiscovery',
                 }
             manager[service.getEPR()] = output
@@ -212,32 +219,34 @@ def zeroConfManager(url, nuvlabox_id, nuvlabox_version, peripheral_path):
     """
 
     services = {}
-
     class MyListener:
 
         def remove_service(self, zeroconf, type, name):
-            # remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
-            print('REMOVING: {}'.format(services[name]), flush=True)
-            removeDeviceFile('zeroconf', name, peripheral_path)
-            del services[name]
-            # print("Service %s removed" % (name,))
+            if ethernetCheck(peripheral_path, 'zeroconf', name):
+
+                remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
+                print('REMOVING: {}'.format(services[name]), flush=True)
+                removeDeviceFile('zeroconf', name, peripheral_path)
+                del services[name]
 
         def add_service(self, zeroconf, type, name):
-            info = zeroconf.get_service_info(type, name)
-            output = {
-                "parent": nuvlabox_id,
-                "version": nuvlabox_version,
-                "available": True,
-                "name": name,
-                "classes": [],
-                "identifier": convertZeroConfAddr(info.addresses),
-                "interface": 'ZeroConf (Bonjour, Avahi)',
-            }
+            if not ethernetCheck(peripheral_path, 'zeroconf', name):
 
-            # resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
-            services[name] = {'resource_id': 'resource_id', 'message': output}
-            createDeviceFile('zeroconf', name, output, peripheral_path)
-            print('PUBLISHING: {}'.format(services[name], flush=True))
+                info = zeroconf.get_service_info(type, name)
+                output = {
+                    "parent": nuvlabox_id,
+                    "version": nuvlabox_version,
+                    "available": True,
+                    "name": name,
+                    "classes": [],
+                    "identifier": convertZeroConfAddr(info.addresses)[0],
+                    "interface": 'ZeroConf (Bonjour, Avahi)',
+                }
+
+                resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
+                services[name] = {'resource_id': resource_id, 'message': output}
+                createDeviceFile('zeroconf', name, output, peripheral_path)
+                print('PUBLISHING: {}'.format(services[name], flush=True))
 
     zc = zeroconf.Zeroconf()
     listener = MyListener()
@@ -257,8 +266,8 @@ def ethernetManager(nuvlabox_id, nuvlabox_version):
     """
 
     output = {}
-    ssdp_output = ssdpManager()
-    ws_discovery_output = wsDiscoveryManager()
+    ssdp_output = ssdpManager(nuvlabox_id, nuvlabox_version)
+    ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version)
     output['ssdp'] = ssdp_output
     output['ws-discovery'] = ws_discovery_output
     return output
@@ -319,6 +328,7 @@ if __name__ == "__main__":
     e = Event()
 
     devices = {'ssdp': {}, 'ws-discovery': {}}
+
     zero_conf_thread = Thread(target=zeroConfManager, args=(API_URL, NUVLABOX_ID, NUVLABOX_VERSION, peripheral_path))
     zero_conf_thread.start()
 
@@ -328,7 +338,7 @@ if __name__ == "__main__":
         print('CURRENT DEVICES: {}\n'.format(current_devices), flush=True)
 
         for protocol in current_devices:
-            print(protocol)
+
             if current_devices[protocol] != devices[protocol] and current_devices[protocol]:
 
                 devices_set = set(devices[protocol].keys())
@@ -344,8 +354,11 @@ if __name__ == "__main__":
                     if not peripheral_already_registered:
 
                         print('PUBLISHING: {}'.format(current_devices[protocol][device]), flush=True)
-                        # resource_id = add(current_devices[protocol][device], API_URL, activated_path, cookies_file)
+
+                        resource_id = add(current_devices[protocol][device], API_URL, activated_path, cookies_file)
+                        
                         devices[protocol][device] = {'resource_id': 'resource_id', 'message': current_devices[protocol][device]}
+
                         createDeviceFile(protocol, device, devices[protocol][device], peripheral_path)
 
                 for device in removing:
@@ -354,10 +367,14 @@ if __name__ == "__main__":
                         ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
 
                     if peripheral_already_registered:
+
                         print('REMOVING: {}'.format(devices[device]), flush=True)
+
                         read_file = readDeviceFile(device, protocol, peripheral_path)
-                        # remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
+                        remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
+
                         del devices[device]
+
                         removeDeviceFile(device, protocol, peripheral_path)
 
-    #     e.wait(timeout=90)
+        e.wait(timeout=90)
