@@ -66,11 +66,11 @@ def wait_bootstrap(context_file, base_peripheral_path, peripheral_paths):
     return
 
 
-def ethernetCheck(peripheral_dir, type, device_addr):
+def ethernetCheck(peripheral_dir, protocol, device_addr):
     """ 
     Checks if peripheral already exists 
     """
-    file_path = '{}-{}'.format(type, device_addr)
+    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
     if file_path in os.listdir(peripheral_dir):
         return True
     return False
@@ -139,6 +139,7 @@ def getBaseIP(schema, location):
         base_url = '%s://%s' % (url.scheme, url.netloc)
 
     return base_url
+
 
 def ssdpManager():
     """
@@ -302,11 +303,6 @@ if __name__ == "__main__":
     cookies_file = '/home/quietswami/nuvlabox/shared/cookies'
     peripheral_path = '/home/quietswami/nuvlabox/shared/peripherals/'
 
-    context = json.load(open(context_path))
-
-    NUVLABOX_VERSION = context['version']
-    NUVLABOX_ID = context['id']
-
     print('ETHERNET MANAGER STARTED')
 
     init_logger()
@@ -314,6 +310,11 @@ if __name__ == "__main__":
     API_URL = "https://nuvla.io"
 
     wait_bootstrap(context_path, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
+
+    context = json.load(open(context_path))
+
+    NUVLABOX_VERSION = context['version']
+    NUVLABOX_ID = context['id']
 
     e = Event()
 

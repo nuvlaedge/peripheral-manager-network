@@ -1,3 +1,5 @@
-pynmcli
-python-nmap
+zeroconf
+wsdiscovery
+ssdpy
+nuvla-api
 requests
