@@ -24,7 +24,6 @@ from ssdpy import SSDPClient
 from xml.dom import minidom
 from urllib.parse import urlparse
 from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
-from zeroconf import ServiceBrowser, Zeroconf
 import zeroconf
 
 
@@ -41,7 +40,7 @@ def init_logger():
     root.addHandler(handler)
 
 
-def wait_bootstrap(context_file):
+def wait_bootstrap(context_file, base_peripheral_path, peripheral_paths):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -53,6 +52,15 @@ def wait_bootstrap(context_file):
         time.sleep(5)
         if os.path.isfile(context_file):
             is_context_file = True
+
+    if not os.path.isdir(base_peripheral_path):
+        os.mkdir(base_peripheral_path)
+
+    for path in peripheral_paths:
+        if path not in os.listdir(base_peripheral_path):
+            peripheral_path = base_peripheral_path + '/' +path
+            os.mkdir(peripheral_path)
+            logging.info('Created Peripheral Path: {}'.format(peripheral_path))
 
     logging.info('NuvlaBox has been initialized.')
     return
@@ -68,34 +76,34 @@ def ethernetCheck(peripheral_dir, type, device_addr):
     return False
 
 
-def createDeviceFile(type, device_addr, device_file, peripheral_dir):
+def createDeviceFile(protocol, device_addr, device_file, peripheral_dir):
     """
     Creates a device file on peripheral folder.
     """
 
-    file_path = '{}-{}'.format(type, device_addr)
+    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
 
     with open(file_path, 'w') as outfile:
         json.dump(device_file, outfile)
 
 
-def removeDeviceFile(type, device_addr, peripheral_dir):
+def removeDeviceFile(protocol, device_addr, peripheral_dir):
     """
     Removes a device file from the peripheral folder
     """
 
-    file_path = '{}-{}'.format(type, device_addr)
+    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
 
     os.unlink(file_path)
 
 
-def readDeviceFile(device_mac_addr, peripheral_dir):
+def readDeviceFile(device_addr, protocol, peripheral_dir):
     """
     Reads a device file from the peripheral folder.
     """
 
-    #TODO: filepath
-    file_path = ''
+    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
+
     return json.load(open(file_path))
 
 
@@ -175,7 +183,7 @@ def wsDiscoveryManager():
                     "version": '',
                     "available": True,
                     "name": service.getEPR(),
-                    "classes": service.getTypes(),
+                    "classes": [str(c) for c in service.getTypes()],
                     "identifier": service.getXAddrs(),
                     "interface": 'WSDiscovery',
                 }
@@ -195,7 +203,7 @@ def convertZeroConfAddr(addr_list):
     return addrs
 
 
-def zeroConfManager():
+def zeroConfManager(url, nuvlabox_id, nuvlabox_version, peripheral_path):
     """
     Manages ZeroConf discoverable devices (Bonjour and Avahi)
     This manager is run in side thread as its asynchrounous callback based
@@ -207,14 +215,17 @@ def zeroConfManager():
     class MyListener:
 
         def remove_service(self, zeroconf, type, name):
-            remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
-            print("Service %s removed" % (name,))
+            # remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
+            print('REMOVING: {}'.format(services[name]), flush=True)
+            removeDeviceFile('zeroconf', name, peripheral_path)
+            del services[name]
+            # print("Service %s removed" % (name,))
 
         def add_service(self, zeroconf, type, name):
             info = zeroconf.get_service_info(type, name)
             output = {
-                "parent": '',
-                "version": '',
+                "parent": nuvlabox_id,
+                "version": nuvlabox_version,
                 "available": True,
                 "name": name,
                 "classes": [],
@@ -222,21 +233,21 @@ def zeroConfManager():
                 "interface": 'ZeroConf (Bonjour, Avahi)',
             }
 
-            resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
-            services[name] = {'resource_id': resource_id}
-            print("Service %s added, service info: %s" % (name, info))
+            # resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
+            services[name] = {'resource_id': 'resource_id', 'message': output}
+            createDeviceFile('zeroconf', name, output, peripheral_path)
+            print('PUBLISHING: {}'.format(services[name], flush=True))
 
-
-    zeroconf = Zeroconf()
+    zc = zeroconf.Zeroconf()
     listener = MyListener()
-    browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+    browser = zeroconf.ServiceBrowser(zc, "_http._tcp.local.", listener)
     try:
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
         pass
     finally:
-        zeroconf.close() 
+        zc.close() 
 
 
 def ethernetManager(nuvlabox_id, nuvlabox_version):
@@ -247,8 +258,8 @@ def ethernetManager(nuvlabox_id, nuvlabox_version):
     output = {}
     ssdp_output = ssdpManager()
     ws_discovery_output = wsDiscoveryManager()
-    output.update(ssdp_output)
-    output.update(ws_discovery_output)
+    output['ssdp'] = ssdp_output
+    output['ws-discovery'] = ws_discovery_output
     return output
 
 
@@ -286,10 +297,10 @@ def remove(resource_id, api_url, activated_path, cookies_file):
 
 if __name__ == "__main__":
 
-    activated_path = '/srv/nuvlabox/shared/.activated'
-    context_path = '/srv/nuvlabox/shared/.context'
-    cookies_file = '/srv/nuvlabox/shared/cookies'
-    peripheral_path = '/srv/nuvlabox/shared/peripherals'
+    activated_path = '/home/quietswami/nuvlabox/shared/.activated'
+    context_path = '/home/quietswami/nuvlabox/shared/.context'
+    cookies_file = '/home/quietswami/nuvlabox/shared/cookies'
+    peripheral_path = '/home/quietswami/nuvlabox/shared/peripherals/'
 
     context = json.load(open(context_path))
 
@@ -297,54 +308,55 @@ if __name__ == "__main__":
     NUVLABOX_ID = context['id']
 
     print('ETHERNET MANAGER STARTED')
-    zeroConfManager()
-       
+
     init_logger()
 
     API_URL = "https://nuvla.io"
 
-    wait_bootstrap(context_path)
+    wait_bootstrap(context_path, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
     e = Event()
 
-    devices = {}
-    zero_conf_thread = Thread(target=zeroConfManager, args=(1,))
+    devices = {'ssdp': {}, 'ws-discovery': {}}
+    zero_conf_thread = Thread(target=zeroConfManager, args=(API_URL, NUVLABOX_ID, NUVLABOX_VERSION, peripheral_path))
+    zero_conf_thread.start()
 
     while True:
 
         current_devices = ethernetManager(NUVLABOX_ID, NUVLABOX_VERSION)
         print('CURRENT DEVICES: {}\n'.format(current_devices), flush=True)
-        
-        if current_devices != devices and current_devices:
 
-            devices_set = set(devices.keys())
-            current_devices_set = set(current_devices.keys())
+        for protocol in current_devices:
+            print(protocol)
+            if current_devices[protocol] != devices[protocol] and current_devices[protocol]:
 
-            publishing = current_devices_set - devices_set
-            removing = devices_set - current_devices_set
+                devices_set = set(devices[protocol].keys())
+                current_devices_set = set(current_devices[protocol].keys())
 
-            for device in publishing:
+                publishing = current_devices_set - devices_set
+                removing = devices_set - current_devices_set
 
-                peripheral_already_registered = \
-                    ethernetCheck(API_URL, current_devices[device])
+                for device in publishing:
+                    peripheral_already_registered = \
+                        ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
 
-                if not peripheral_already_registered:
+                    if not peripheral_already_registered:
 
-                    print('PUBLISHING: {}'.format(current_devices[device]), flush=True)
-                    resource_id = add(current_devices[device], 'https://nuvla.io', activated_path, cookies_file)
-                    devices[device] = {'resource_id': resource_id, 'message': current_devices[device]}
-                    createDeviceFile(device, devices[device], peripheral_path)
+                        print('PUBLISHING: {}'.format(current_devices[protocol][device]), flush=True)
+                        # resource_id = add(current_devices[protocol][device], API_URL, activated_path, cookies_file)
+                        devices[protocol][device] = {'resource_id': 'resource_id', 'message': current_devices[protocol][device]}
+                        createDeviceFile(protocol, device, devices[protocol][device], peripheral_path)
 
+                for device in removing:
 
-            for device in removing:
+                    peripheral_already_registered = \
+                        ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
 
-                peripheral_already_registered = \
-                    ethernetCheck(API_URL, devices[device])
+                    if peripheral_already_registered:
+                        print('REMOVING: {}'.format(devices[device]), flush=True)
+                        read_file = readDeviceFile(device, protocol, peripheral_path)
+                        # remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
+                        del devices[device]
+                        removeDeviceFile(device, protocol, peripheral_path)
 
-                if peripheral_already_registered:
-                    print('REMOVING: {}'.format(devices[device]), flush=True)
-                    read_file = readDeviceFile(device, peripheral_path)
-                    remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
-                    del devices[device]
-                    removeDeviceFile(device, peripheral_path)
-        e.wait(timeout=90)
+    #     e.wait(timeout=90)
