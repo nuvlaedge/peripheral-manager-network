@@ -61,7 +61,7 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
 
                 if not os.path.isdir(new_peripheral_path):
                     os.mkdir(new_peripheral_path)
-                    logging.info('PERIPHERAL: {}'.format(peripheral))
+                    logging.info('PERIPHERAL: {}'.format(new_peripheral_path))
                 
             is_peripheral = True
             
