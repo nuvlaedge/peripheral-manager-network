@@ -36,7 +36,7 @@ def init_logger():
     root.addHandler(handler)
 
 
-def wait_bootstrap(context_file, base_peripheral_path, peripheral_path, peripheral_paths):
+def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -55,16 +55,17 @@ def wait_bootstrap(context_file, base_peripheral_path, peripheral_path, peripher
 
     peripheral = False
 
-    if not os.path.isdir(peripheral_path) or peripheral_path not in os.listdir(peripheral_path):
-        while not peripheral:
-            logging.info('Wating for peripheral directory...')
-            if os.path.isdir(base_peripheral_path):
-                for path in peripheral_paths:
-                    new_peripheral_path = peripheral_path + '/' +path
+
+    while not peripheral:
+        logging.info('Wating for peripheral directory...')
+        if os.path.isdir(peripheral_path):
+            for path in peripheral_paths:
+                new_peripheral_path = peripheral_path + '/' +path
+                if not os.path.isdir(new_peripheral_path)
                     os.mkdir(new_peripheral_path)
                     logging.info('PERIPHERAL: {}'.format(peripheral)
 
-                peripheral = True
+            peripheral = True
 
     logging.info('NuvlaBox has been initialized.')
     return
