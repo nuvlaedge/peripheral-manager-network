@@ -57,7 +57,7 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
         logging.info('Wating for peripheral directory...')
         if os.path.isdir(peripheral_path):
             for path in peripheral_paths:
-                new_peripheral_path = peripheral_path + '/' +path
+                new_peripheral_path = peripheral_path + path
 
                 if not os.path.isdir(new_peripheral_path):
                     os.mkdir(new_peripheral_path)
