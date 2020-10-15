@@ -36,7 +36,7 @@ def init_logger():
     root.addHandler(handler)
 
 
-def wait_bootstrap(context_file, base_peripheral_path, peripheral_paths):
+def wait_bootstrap(context_file, base_peripheral_path, peripheral_path, peripheral_paths):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -52,11 +52,19 @@ def wait_bootstrap(context_file, base_peripheral_path, peripheral_paths):
     if not os.path.isdir(base_peripheral_path):
         os.mkdir(base_peripheral_path)
 
-    for path in peripheral_paths:
-        if path not in os.listdir(base_peripheral_path):
-            peripheral_path = base_peripheral_path + '/' +path
-            os.mkdir(peripheral_path)
-            logging.info('Created Peripheral Path: {}'.format(peripheral_path))
+
+    peripheral = False
+
+    if not os.path.isdir(peripheral_path) or peripheral_path not in os.listdir(peripheral_path):
+        while not peripheral:
+            logging.info('Wating for peripheral directory...')
+            if os.path.isdir(base_peripheral_path):
+                for path in peripheral_paths:
+                    new_peripheral_path = peripheral_path + '/' +path
+                    os.mkdir(new_peripheral_path)
+                    logging.info('PERIPHERAL: {}'.format(peripheral)
+
+                peripheral = True
 
     logging.info('NuvlaBox has been initialized.')
     return
@@ -307,10 +315,10 @@ def remove(resource_id, api_url, activated_path, cookies_file):
 
 if __name__ == "__main__":
 
-    activated_path = '/home/quietswami/nuvlabox/shared/.activated'
-    context_path = '/home/quietswami/nuvlabox/shared/.context'
-    cookies_file = '/home/quietswami/nuvlabox/shared/cookies'
-    peripheral_path = '/home/quietswami/nuvlabox/shared/peripherals/'
+    activated_path = '/home/pi/shared/.activated'
+    context_path = '/home/pi/shared/.context'
+    cookies_file = '/home/pi/shared/cookies'
+    peripheral_path = '/home/pi/shared/.peripherals/'
 
     print('ETHERNET MANAGER STARTED')
 
@@ -348,8 +356,11 @@ if __name__ == "__main__":
                 removing = devices_set - current_devices_set
 
                 for device in publishing:
+
                     peripheral_already_registered = \
                         ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
+
+                    resource_id = ''
 
                     if not peripheral_already_registered:
 
@@ -357,9 +368,8 @@ if __name__ == "__main__":
 
                         resource_id = add(current_devices[protocol][device], API_URL, activated_path, cookies_file)
                         
-                        devices[protocol][device] = {'resource_id': 'resource_id', 'message': current_devices[protocol][device]}
-
-                        createDeviceFile(protocol, device, devices[protocol][device], peripheral_path)
+                    devices[protocol][device] = {'resource_id': resource_id, 'message': current_devices[protocol][device]}
+                    createDeviceFile(protocol, device, devices[protocol][device], peripheral_path)
 
                 for device in removing:
 
@@ -373,8 +383,7 @@ if __name__ == "__main__":
                         read_file = readDeviceFile(device, protocol, peripheral_path)
                         remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
 
-                        del devices[device]
-
-                        removeDeviceFile(device, protocol, peripheral_path)
+                    del devices[device]
+                    removeDeviceFile(device, protocol, peripheral_path)
 
         e.wait(timeout=90)
