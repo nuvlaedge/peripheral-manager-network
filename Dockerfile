@@ -12,4 +12,4 @@ COPY code/ /opt/nuvlabox/
 
 WORKDIR /opt/nuvlabox/
 
-# ENTRYPOINT ["python", "manager.py"]
+ENTRYPOINT ["python", "manager.py"]
