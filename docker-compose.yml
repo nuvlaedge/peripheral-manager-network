@@ -4,7 +4,7 @@ services:
   peripheral-manager-ethernet:
     build: .
     restart: on-failure
-    network: host
+    network_mode: host
     privileged: True
     volumes:
       - nuvlabox-db:/srv/nuvlabox/shared
