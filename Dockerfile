@@ -1,12 +1,8 @@
-FROM python:3-buster
+FROM python:3-slim
 
 COPY code/requirements.txt /opt/nuvlabox/
 
-RUN apt update && apt install nmap network-manager -y
-
-RUN pip install -r /opt/nuvlabox/requirements.txt
-
-RUN rm -rf /var/cache/apt/*
+RUN apt update && apt install gcc -y && pip install -r /opt/nuvlabox/requirements.txt && rm -rf /var/cache/apt/*
 
 COPY code/ /opt/nuvlabox/
 
