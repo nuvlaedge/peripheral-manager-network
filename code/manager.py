@@ -2,8 +2,8 @@
 
 # -*- coding: utf-8 -*-
 
-"""NuvlaBox Peripheral Manager Ethernet
-This service provides ethernet device discovery.
+"""NuvlaBox Peripheral Manager Network
+This service provides network devices discovery.
 """
 
 import logging
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
 
-    print('ETHERNET MANAGER STARTED')
+    print('NETWORK PERIPHERAL MANAGER STARTED')
 
     init_logger()
 

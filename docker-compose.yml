@@ -1,8 +1,8 @@
 version: "3.6"
 
 services:
-  peripheral-manager-ethernet:
-    image: peripheral-manager-ethernet 
+  peripheral-manager-network:
+    build: .
     restart: on-failure
     network_mode: host
     privileged: True
