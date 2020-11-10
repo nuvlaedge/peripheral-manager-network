@@ -8,4 +8,6 @@ COPY code/ /opt/nuvlabox/
 
 WORKDIR /opt/nuvlabox/
 
+ONBUILD RUN ./license.sh
+
 ENTRYPOINT ["python", "manager.py"]
