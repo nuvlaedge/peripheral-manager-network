@@ -6,7 +6,7 @@
     <groupId>sixsq.nuvlabox.peripheral-manager-network</groupId>
     <artifactId>peripheral-manager-network</artifactId>
     <packaging>pom</packaging>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.1</version>
     <name>peripheral-manager-network</name>
     <url>http://sixsq.com/</url>
 
