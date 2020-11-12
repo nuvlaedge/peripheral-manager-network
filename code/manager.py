@@ -84,7 +84,7 @@ def network_per_exists_check(peripheral_dir, protocol, device_addr):
         file_content = readDeviceFile(device_addr, protocol, peripheral_dir)
 
         return True, file_content.get('resource-id')
-    return False
+    return False, None
 
 
 def get_saved_peripherals(peripheral_dir, protocol):
@@ -480,7 +480,7 @@ if __name__ == "__main__":
     while True:
 
         current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION, zeroconf, zeroconf_listener)
-        logging.info('CURRENT DEVICES: {}\n'.format(current_devices))
+        logging.info('CURRENT DEVICES: {}'.format(current_devices))
 
         for protocol in current_devices:
 
