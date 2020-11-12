@@ -8,15 +8,13 @@ This service provides network devices discovery.
 
 import logging
 import requests
-import sys
 import time
-from threading import Event, Thread
 import json
-from nuvla.api import Api
 import os
 import xmltodict
 import re
-
+from threading import Event
+from nuvla.api import Api
 # Packages for Service Discovery
 from ssdpy import SSDPClient
 from xml.dom import minidom
@@ -25,19 +23,6 @@ from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
 from zeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
 
 scanning_interval = 30
-
-
-def init_logger():
-    """ Initializes logging """
-
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(levelname)s - %(funcName)s - %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
 
 
 def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
@@ -247,15 +232,15 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
     return output['peripherals']
 
 
-def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
+def wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon):
     """
     Manages WSDiscovery discoverable devices
     """
     manager = {}
 
-    wsd = WSDiscovery()
-    wsd.start()
-    services = wsd.searchServices()
+    wsdaemon.start()
+
+    services = wsdaemon.searchServices(timeout=6)
     for service in services:
         identifier = str(service.getEPR()).split(':')[-1]
         classes = [ re.split("/|:", str(c))[-1] for c in service.getTypes() ]
@@ -277,7 +262,7 @@ def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
 
             manager[identifier] = output
 
-    wsd.stop()
+    wsdaemon.stop()
 
     return manager
 
@@ -344,7 +329,7 @@ def format_zeroconf_services(nb_id, nb_version, services):
                     product_name_known_keys = ['model', 'ModelName', 'am', 'rpMd', 'name']
                     matched_keys = list(product_name_known_keys & dict_properties.keys())
                     if matched_keys:
-                        output[identifier]['product'] = dict_properties[matched_keys[0]]
+                        output[identifier]['name'] = output[identifier]['product'] = dict_properties[matched_keys[0]]
 
                     # for additional description
                     if 'uname' in dict_properties:
@@ -391,7 +376,7 @@ def parse_zeroconf_devices(nb_id, nb_version, zc, listener):
     return format_zeroconf_services(nb_id, nb_version, listener.all_info)
 
 
-def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener):
+def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener, wsdaemon):
     """
     Runs and manages the outputs from the discovery.
     """
@@ -400,7 +385,7 @@ def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener):
 
     zeroconf_output = parse_zeroconf_devices(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener)
     ssdp_output = ssdpManager(nuvlabox_id, nuvlabox_version)
-    ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version)
+    ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon)
     output['ssdp'] = ssdp_output
     output['ws-discovery'] = ws_discovery_output
     output['zeroconf'] = zeroconf_output
@@ -435,8 +420,6 @@ if __name__ == "__main__":
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
-
-    init_logger()
 
     nuvla_endpoint_insecure = os.environ["NUVLA_ENDPOINT_INSECURE"] if "NUVLA_ENDPOINT_INSECURE" in os.environ else False
     if isinstance(nuvla_endpoint_insecure, str):
@@ -475,11 +458,13 @@ if __name__ == "__main__":
     zeroconf = Zeroconf()
     zeroconf_listener = ZeroConfListener()
 
+    wsdaemon = WSDiscovery()
+
     api = authenticate(API_URL, nuvla_endpoint_insecure, activated_path)
 
     while True:
 
-        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION, zeroconf, zeroconf_listener)
+        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION, zeroconf, zeroconf_listener, wsdaemon)
         logging.info('CURRENT DEVICES: {}'.format(current_devices))
 
         for protocol in current_devices:
