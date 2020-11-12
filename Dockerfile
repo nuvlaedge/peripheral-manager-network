@@ -2,7 +2,7 @@ FROM python:3.9-alpine as builder
 
 COPY code/requirements.txt /opt/nuvlabox/
 
-RUN apk update && apk add --no-cache gcc
+RUN apk update && apk add --no-cache gcc musl-dev linux-headers
 
 RUN pip install -r /opt/nuvlabox/requirements.txt
 
