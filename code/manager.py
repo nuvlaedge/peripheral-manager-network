@@ -456,6 +456,8 @@ if __name__ == "__main__":
                    'ws-discovery': get_saved_peripherals(peripheral_path, 'ws-discovery'),
                    'zeroconf': get_saved_peripherals(peripheral_path, 'zeroconf')}
 
+    logging.info(f'Peripherals registered from the previous run: {old_devices}')
+
     zeroconf = Zeroconf()
     zeroconf_listener = ZeroConfListener()
 
@@ -481,7 +483,7 @@ if __name__ == "__main__":
                 for device in publishing:
 
                     peripheral_already_registered, res_id = \
-                        network_per_exists_check(peripheral_path, protocol, current_devices[protocol][device])
+                        network_per_exists_check(peripheral_path, protocol, device)
 
                     old_devices[protocol][device] = current_devices[protocol][device]
 
@@ -505,7 +507,7 @@ if __name__ == "__main__":
                     logging.info('REMOVING: {}'.format(old_devices[protocol][device]))
 
                     peripheral_already_registered, res_id = \
-                        network_per_exists_check(peripheral_path, protocol, current_devices[protocol][device])
+                        network_per_exists_check(peripheral_path, protocol, device)
 
                     if res_id:
                         r = api.delete(res_id).data
