@@ -3,3 +3,4 @@ wsdiscovery
 ssdpy
 nuvla-api
 requests
+xmltodict

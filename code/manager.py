@@ -14,6 +14,8 @@ from threading import Event, Thread
 import json
 from nuvla.api import Api
 import os
+import xmltodict
+import re
 
 # Packages for Service Discovery
 from ssdpy import SSDPClient
@@ -21,6 +23,8 @@ from xml.dom import minidom
 from urllib.parse import urlparse
 from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
 import zeroconf
+
+scanning_interval = 30
 
 
 def init_logger():
@@ -54,7 +58,7 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
 
     while not is_peripheral:
 
-        logging.info('Wating for peripheral directory...')
+        logging.info('Waiting for peripheral directory...')
         
         if os.path.isdir(peripheral_path):
             for path in peripheral_paths:
@@ -65,19 +69,22 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
                     logging.info('PERIPHERAL: {}'.format(new_peripheral_path))
                 
             is_peripheral = True
-            
+
+        time.sleep(5)
 
     logging.info('NuvlaBox has been initialized.')
     return
 
 
-def ethernetCheck(peripheral_dir, protocol, device_addr):
+def network_per_exists_check(peripheral_dir, protocol, device_addr):
     """ 
     Checks if peripheral already exists 
     """
     file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
     if file_path in os.listdir(peripheral_dir):
-        return True
+        file_content = readDeviceFile(device_addr, protocol, peripheral_dir)
+
+        return True, file_content.get('resource-id')
     return False
 
 
@@ -112,42 +119,28 @@ def readDeviceFile(device_addr, protocol, peripheral_dir):
     return json.load(open(file_path))
 
 
-def XMLGetNodeText(node):
-    """
-    Return text contents of an XML node.
-    """
-    text = []
-
-    for childNode in node.childNodes:
-        if childNode.nodeType == node.TEXT_NODE:
-            text.append(childNode.data)
-
-    return(''.join(text))
-
-
-def getDeviceSchema(path):
+def get_ssdp_device_xml_as_json(url):
     """
     Requests and parses XML file with information from SSDP
     """
-    print(path)
-    r = requests.get(path)
-    tree = minidom.parseString(r.content)
-    return tree
 
+    if not url:
+        return {}
 
-def getBaseIP(schema, location):
-    """
-    Returns the IP address from SSDP.
-    """
-    base_url_elem = schema.getElementsByTagName('URLBase')
+    parsed_url = urlparse(url)
+    if not parsed_url.schema:
+        url = f'http://{url}'
 
-    if base_url_elem:
-        base_url = XMLGetNodeText(base_url_elem[0]).rstrip('/')
-    else:
-        url = urlparse(location)
-        base_url = '%s://%s' % (url.scheme, url.netloc)
+    try:
+        r = requests.get(url)
+        device_xml = minidom.parseString(r.content).getElementsByTagName('device')[0]
 
-    return base_url
+        device_json = xmltodict.parse(device_xml.toxml())
+
+        return device_json.get('device', {})
+    except:
+        logging.exception(f"Cannot get and parse XML for SSDP device info from {url}")
+        return {}
 
 
 def ssdpManager(nuvlabox_id, nuvlabox_version):
@@ -157,31 +150,81 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
 
     client = SSDPClient()
     devices = client.m_search("ssdp:all")
-    manager = {}
+    output = {
+        'peripherals': {},
+        'xml': {}
+    }
 
     for device in devices:
         try:
-            schema = getDeviceSchema(device['location'])
-            ip = getBaseIP(schema, device['location'])
-            device_info = schema.getElementsByTagName('device')[0]
-            name =  XMLGetNodeText(device_info.getElementsByTagName('friendlyName')[0])
+            usn = device['usn']
+        except KeyError:
+            logging.warning(f'SSDP device {device} missinng USN field, and thus is considered not compliant. Ignoring')
+            continue
 
-            if name not in manager.keys():
-                output = {
-                    "parent": nuvlabox_id,
-                    "version": nuvlabox_version,
-                    "available": True,
-                    "name": name,
-                    "classes": [],
-                    "identifier": ip,
-                    "interface": 'SSDP',
-                }
+        if ":device:" in usn:
+            # normally, USN = "uuid:XYZ::urn:schemas-upnp-org:device:DEVICETYPE:1"
+            # if this substring is not there, then we are not interested (it might be a service)
+            # TODO: consider aggregating all services being provided by a device
+            try:
+                device_class = usn.split(':device:')[1].split(':')[0]
+            except IndexError:
+                logging.exception(f'Failed to infer device class for from USN {usn}')
+                continue
+        else:
+            continue
 
-                manager[name] = output
-        except:
-            pass
+        try:
+            identifier = usn.replace("uuid:", "").split(":")[0]
+        except IndexError:
+            logging.warning(f'Cannot parse USN {usn}. Continuing with raw USN value as identifier')
+            identifier = usn
 
-    return manager
+        if identifier in output['peripherals']:
+            # ssdp device has already been identified. This entry might simply be another service/class
+            # of the same device let's just see if there's an update to the classes and move on
+
+            existing_classes = output['peripherals'][identifier]['classes']
+            if device_class in existing_classes:
+                continue
+            else:
+                output['peripherals'][identifier]['classes'].append(device_class)
+        else:
+            # new device
+            location = device.get('location')
+            device_from_location = get_ssdp_device_xml_as_json(location)    # always a dict
+            name = device_from_location.get('friendlyName',
+                                            device.get('x-friendly-name', usn))
+            description = device_from_location.get('modelDescription',
+                                                   device.get('server', name))
+
+            output['peripherals'][identifier] = {
+                "parent": nuvlabox_id,
+                "version": nuvlabox_version,
+                'classes': [device_class],
+                'available': True,
+                'identifier': identifier,
+                'interface': 'SSDP',
+                'name': name,
+                'description': description
+            }
+
+            if location:
+                output['peripherals'][identifier]['device-path'] = location
+
+            vendor = device_from_location.get('manufacturer')
+            if vendor:
+                output['peripherals'][identifier]['vendor'] = vendor
+
+            product = device_from_location.get('modelName')
+            if product:
+                output['peripherals'][identifier]['product'] = product
+
+            serial = device_from_location.get('serialNumber')
+            if serial:
+                output['peripherals'][identifier]['serial-number'] = serial
+
+    return output['peripherals']
 
 
 def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
@@ -194,17 +237,27 @@ def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
     wsd.start()
     services = wsd.searchServices()
     for service in services:
-        if service.getEPR() not in manager.keys():
+        identifier = str(service.getEPR()).split(':')[-1]
+        classes = [ re.split("/|:", str(c))[-1] for c in service.getTypes() ]
+        name = " | ".join(classes) + " [wsdiscovery peripheral]"
+        if identifier not in manager.keys():
             output = {
-                    "parent": nuvlabox_id,
-                    "version": nuvlabox_version,
-                    "available": True,
-                    "name": service.getEPR(),
-                    "classes": [str(c) for c in service.getTypes()],
-                    "identifier": service.getXAddrs()[0],
-                    "interface": 'WSDiscovery',
-                }
-            manager[service.getEPR()] = output
+                "parent": nuvlabox_id,
+                "version": nuvlabox_version,
+                "available": True,
+                "name": name,
+                "description": name + f" - {str(service.getEPR())} - Scopes: {', '.join([str(s) for s in service.getScopes()])}",
+                "classes": classes,
+                "identifier": identifier,
+                "interface": 'WS-Discovery',
+            }
+
+            if len(service.getXAddrs()) > 0:
+                output['device-path'] = ", ".join([str(x) for x in service.getXAddrs()])
+
+            manager[identifier] = output
+
+    wsd.stop()
 
     return manager
 
@@ -269,12 +322,13 @@ def zeroConfManager(url, nuvlabox_id, nuvlabox_version, peripheral_path):
         zc.close() 
 
 
-def ethernetManager(nuvlabox_id, nuvlabox_version):
+def network_manager(nuvlabox_id, nuvlabox_version):
     """
     Runs and manages the outputs from the discovery.
     """
 
     output = {}
+
     ssdp_output = ssdpManager(nuvlabox_id, nuvlabox_version)
     ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version)
     output['ssdp'] = ssdp_output
@@ -314,77 +368,133 @@ def remove(resource_id, api_url, activated_path, cookies_file):
     return response['resource-id']
 
 
+def authenticate(url, insecure, activated_path):
+    """ Uses the NB ApiKey credential to authenticate against Nuvla
+
+    :return: Api client
+    """
+    api_instance = Api(endpoint='https://{}'.format(url),
+                       insecure=insecure, reauthenticate=True)
+
+    if os.path.exists(activated_path):
+        with open(activated_path) as apif:
+            apikey = json.loads(apif.read())
+    else:
+        return None
+
+    api_instance.login_apikey(apikey['api-key'], apikey['secret-key'])
+
+    return api_instance
+
+
 if __name__ == "__main__":
 
     activated_path = '/srv/nuvlabox/shared/.activated'
     context_path = '/srv/nuvlabox/shared/.context'
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
+    e = Event()
 
-    print('NETWORK PERIPHERAL MANAGER STARTED')
+    logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
     init_logger()
 
-    API_URL = "https://nuvla.io"
+    nuvla_endpoint_insecure = os.environ["NUVLA_ENDPOINT_INSECURE"] if "NUVLA_ENDPOINT_INSECURE" in os.environ else False
+    if isinstance(nuvla_endpoint_insecure, str):
+        if nuvla_endpoint_insecure.lower() == "false":
+            nuvla_endpoint_insecure = False
+        else:
+            nuvla_endpoint_insecure = True
+    else:
+        nuvla_endpoint_insecure = bool(nuvla_endpoint_insecure)
+
+    API_URL = os.getenv("NUVLA_ENDPOINT", "nuvla.io")
+    while API_URL[-1] == "/":
+        API_URL = API_URL[:-1]
+
+    API_URL = API_URL.replace("https://", "")
+
+    api = None
 
     wait_bootstrap(context_path, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
-    context = json.load(open(context_path))
+    while True:
+        try:
+            with open(context_path) as c:
+                context = json.loads(c.read())
+            NUVLABOX_VERSION = context['version']
+            NUVLABOX_ID = context['id']
+            break
+        except (json.decoder.JSONDecodeError, KeyError):
+            logging.exception(f"Waiting for {context_path} to be populated")
+            e.wait(timeout=5)
 
-    NUVLABOX_VERSION = context['version']
-    NUVLABOX_ID = context['id']
+    old_devices = {'ssdp': {}, 'ws-discovery': {}}
 
-    e = Event()
+    zeroconf_target_service_types = [
+        '_airdroid._tcp.local.',
+        '_airdrop._tcp.local.',
 
-    devices = {'ssdp': {}, 'ws-discovery': {}}
-
+    ]
     zero_conf_thread = Thread(target=zeroConfManager, args=(API_URL, NUVLABOX_ID, NUVLABOX_VERSION, peripheral_path))
     zero_conf_thread.start()
 
+    api = authenticate(API_URL, nuvla_endpoint_insecure, activated_path)
+
     while True:
 
-        current_devices = ethernetManager(NUVLABOX_ID, NUVLABOX_VERSION)
-        print('CURRENT DEVICES: {}\n'.format(current_devices), flush=True)
+        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION)
+        logging.info('CURRENT DEVICES: {}\n'.format(current_devices))
 
         for protocol in current_devices:
 
-            if current_devices[protocol] != devices[protocol] and current_devices[protocol]:
+            if current_devices[protocol] != old_devices[protocol] and current_devices[protocol]:
 
-                devices_set = set(devices[protocol].keys())
+                old_devices_set = set(old_devices[protocol].keys())
                 current_devices_set = set(current_devices[protocol].keys())
 
-                publishing = current_devices_set - devices_set
-                removing = devices_set - current_devices_set
+                publishing = current_devices_set - old_devices_set
+                removing = old_devices_set - current_devices_set
 
                 for device in publishing:
 
-                    peripheral_already_registered = \
-                        ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
+                    peripheral_already_registered, res_id = \
+                        network_per_exists_check(peripheral_path, protocol, current_devices[protocol][device])
 
-                    resource_id = ''
+                    old_devices[protocol][device] = current_devices[protocol][device]
 
                     if not peripheral_already_registered:
 
-                        print('PUBLISHING: {}'.format(current_devices[protocol][device]), flush=True)
+                        logging.info('PUBLISHING: {}'.format(current_devices[protocol][device]))
+                        try:
+                            resource_id = api.add('nuvlabox-peripheral', current_devices[protocol][device]).data['resource-id']
+                        except:
+                            logging.exception(f'Unable to publish peripheral {device}')
+                            continue
 
-                        resource_id = add(current_devices[protocol][device], API_URL, activated_path, cookies_file)
-                        
-                    devices[protocol][device] = {'resource_id': resource_id, 'message': current_devices[protocol][device]}
-                    createDeviceFile(protocol, device, devices[protocol][device], peripheral_path)
+                        createDeviceFile(protocol,
+                                         device,
+                                         {'resource_id': resource_id,
+                                          'message': current_devices[protocol][device]},
+                                         peripheral_path)
 
                 for device in removing:
 
-                    peripheral_already_registered = \
-                        ethernetCheck(peripheral_path, protocol, current_devices[protocol][device])
+                    logging.info('REMOVING: {}'.format(old_devices[protocol][device]))
 
-                    if peripheral_already_registered:
+                    peripheral_already_registered, res_id = \
+                        network_per_exists_check(peripheral_path, protocol, current_devices[protocol][device])
 
-                        print('REMOVING: {}'.format(devices[device]), flush=True)
+                    if res_id:
+                        r = api.delete(res_id).data
+                    else:
+                        logging.warning(f'Unable to retrieve ID of locally registered device {device}. Local delete only')
 
-                        read_file = readDeviceFile(device, protocol, peripheral_path)
-                        remove(read_file['resource_id'], API_URL, activated_path, cookies_file)
+                    try:
+                        removeDeviceFile(device, protocol, peripheral_path)
+                    except FileNotFoundError:
+                        logging.warning(f'Peripheral file {device} does not exist. Considered deleted')
 
-                    del devices[device]
-                    removeDeviceFile(device, protocol, peripheral_path)
+                    del old_devices[device]
 
-        e.wait(timeout=90)
+        e.wait(timeout=scanning_interval)
