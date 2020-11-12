@@ -1,0 +1,12 @@
+version: "3.6"
+
+services:
+  peripheral-manager-network:
+    build: .
+    restart: on-failure
+    network_mode: host
+    volumes:
+      - nuvlabox-db:/srv/nuvlabox/shared
+    labels:
+      - nuvlabox.component=True
+      - nuvlabox.deployment=production
