@@ -472,7 +472,7 @@ if __name__ == "__main__":
 
         for protocol in current_devices:
 
-            if current_devices[protocol] != old_devices[protocol] and current_devices[protocol]:
+            if current_devices[protocol] != old_devices[protocol]:
 
                 old_devices_set = set(old_devices[protocol].keys())
                 current_devices_set = set(current_devices[protocol].keys())
