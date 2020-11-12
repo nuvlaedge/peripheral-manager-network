@@ -23,6 +23,7 @@ from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
 from zeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
 
 scanning_interval = 30
+logging.basicConfig(level=logging.INFO)
 
 
 def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
@@ -244,14 +245,14 @@ def wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon):
     for service in services:
         identifier = str(service.getEPR()).split(':')[-1]
         classes = [ re.split("/|:", str(c))[-1] for c in service.getTypes() ]
-        name = " | ".join(classes) + " [wsdiscovery peripheral]"
+        name = " | ".join(classes)
         if identifier not in manager.keys():
             output = {
                 "parent": nuvlabox_id,
                 "version": nuvlabox_version,
                 "available": True,
                 "name": name,
-                "description": name + f" - {str(service.getEPR())} - Scopes: {', '.join([str(s) for s in service.getScopes()])}",
+                "description": f"[wsdiscovery peripheral] {str(service.getEPR())} | Scopes: {', '.join([str(s) for s in service.getScopes()])}",
                 "classes": classes,
                 "identifier": identifier,
                 "interface": 'WS-Discovery',
