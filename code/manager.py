@@ -510,7 +510,10 @@ if __name__ == "__main__":
                         network_per_exists_check(peripheral_path, protocol, device)
 
                     if res_id:
-                        r = api.delete(res_id).data
+                        try:
+                            r = api.delete(res_id).data
+                        except:
+                            logging.exception(f'Cannot delete {res_id} from Nuvla. Local delete only')
                     else:
                         logging.warning(f'Unable to retrieve ID of locally registered device {device}. Local delete only')
 
