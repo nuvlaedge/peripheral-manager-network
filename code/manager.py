@@ -69,7 +69,7 @@ def network_per_exists_check(peripheral_dir, protocol, device_addr):
     if device_addr in os.listdir(f'{peripheral_dir}{protocol}'):
         file_content = readDeviceFile(device_addr, protocol, peripheral_dir)
 
-        return True, file_content.get('resource-id')
+        return True, file_content.get('resource_id')
     return False, None
 
 
@@ -519,6 +519,6 @@ if __name__ == "__main__":
                     except FileNotFoundError:
                         logging.warning(f'Peripheral file {device} does not exist. Considered deleted')
 
-                    del old_devices[device]
+                    del old_devices[protocol][device]
 
         e.wait(timeout=scanning_interval)
