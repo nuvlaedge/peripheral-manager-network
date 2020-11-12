@@ -515,7 +515,7 @@ if __name__ == "__main__":
                         logging.warning(f'Unable to retrieve ID of locally registered device {device}. Local delete only')
 
                     try:
-                        removeDeviceFile(device, protocol, peripheral_path)
+                        removeDeviceFile(protocol, device, peripheral_path)
                     except FileNotFoundError:
                         logging.warning(f'Peripheral file {device} does not exist. Considered deleted')
 
