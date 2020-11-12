@@ -22,7 +22,7 @@ from ssdpy import SSDPClient
 from xml.dom import minidom
 from urllib.parse import urlparse
 from wsdiscovery.discovery import ThreadedWSDiscovery as WSDiscovery
-import zeroconf
+from zeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
 
 scanning_interval = 30
 
@@ -80,12 +80,32 @@ def network_per_exists_check(peripheral_dir, protocol, device_addr):
     """ 
     Checks if peripheral already exists 
     """
-    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
-    if file_path in os.listdir(peripheral_dir):
+    if device_addr in os.listdir(f'{peripheral_dir}{protocol}'):
         file_content = readDeviceFile(device_addr, protocol, peripheral_dir)
 
         return True, file_content.get('resource-id')
     return False
+
+
+def get_saved_peripherals(peripheral_dir, protocol):
+    """
+    To be used at bootstrap, to check for existing peripherals, just to make sure we delete old and only insert new
+    peripherals, that have been modified during the NuvlaBox shutdown
+
+    :param peripheral_dir: base peripheral dir in shared volume
+    :param protocol: protocol name
+    :return: map of device identifiers and content
+    """
+    output = {}
+
+    for identifier in os.listdir(f'{peripheral_dir}{protocol}'):
+        file_content = readDeviceFile(identifier, protocol, peripheral_dir)
+        if 'message' in file_content:
+            output[identifier] = file_content['message']
+        else:
+            continue
+
+    return output
 
 
 def createDeviceFile(protocol, device_addr, device_file, peripheral_dir):
@@ -262,110 +282,129 @@ def wsDiscoveryManager(nuvlabox_id, nuvlabox_version):
     return manager
 
 
-def convertZeroConfAddr(addr_list):
+class ZeroConfListener:
+    all_info = {}
+    listening_to = {}
+
+    def remove_service(self, zeroconf, type, name):
+        logging.info(f"[zeroconf] Service {name} removed")
+        if name in self.all_info:
+            self.all_info.pop(name)
+
+    def add_service(self, zeroconf, type, name):
+        info = zeroconf.get_service_info(type, name)
+        logging.info(f"[zeroconf] Service {name} added")
+        self.all_info[name] = info
+
+
+def format_zeroconf_services(nb_id, nb_version, services):
+    """ Formats the Zeroconf listener services into a Nuvla compliant data format
+
+    :param services: list of zeroconf services from lister, i.e. list = {'service_name': ServiceInfo, ...}
+    :return: Nuvla formatted peripheral data
     """
-    Converts IP Addresses from Zeroconf
-    """
-    addrs = []
-    for addr in addr_list:
-        addrs.append('.'.join([str(i) for i in list(addr)]))
 
-    return addrs
+    output = {}
 
+    for service_name, service_data in services.items():
+        try:
+            identifier = service_data.server
 
-def zeroConfManager(url, nuvlabox_id, nuvlabox_version, peripheral_path):
-    """
-    Manages ZeroConf discoverable devices (Bonjour and Avahi)
-    This manager is run in side thread as its asynchrounous callback based
-        execution.
-    """
-
-    services = {}
-    class MyListener:
-
-        def remove_service(self, zeroconf, type, name):
-            if ethernetCheck(peripheral_path, 'zeroconf', name):
-
-                remove(services[name]['resource_id'], 'https://nuvla.io', activated_path, cookies_file)
-                print('REMOVING: {}'.format(services[name]), flush=True)
-                removeDeviceFile('zeroconf', name, peripheral_path)
-                del services[name]
-
-        def add_service(self, zeroconf, type, name):
-            if not ethernetCheck(peripheral_path, 'zeroconf', name):
-
-                info = zeroconf.get_service_info(type, name)
-                output = {
-                    "parent": nuvlabox_id,
-                    "version": nuvlabox_version,
-                    "available": True,
-                    "name": name,
-                    "classes": [],
-                    "identifier": convertZeroConfAddr(info.addresses)[0],
-                    "interface": 'ZeroConf (Bonjour, Avahi)',
+            if identifier not in output:
+                output[identifier] = {
+                    'parent': nb_id,
+                    'name': service_data.server,
+                    'description': f'{service_name}:{service_data.port}',
+                    'version': nb_version,
+                    'identifier': identifier,
+                    'available': True,
+                    'interface': "Bonjour/Avahi",
+                    'classes': [service_data.type]
                 }
 
-                resource_id = add(output, 'https://nuvla.io', activated_path, cookies_file)
-                services[name] = {'resource_id': resource_id, 'message': output}
-                createDeviceFile('zeroconf', name, output, peripheral_path)
-                print('PUBLISHING: {}'.format(services[name], flush=True))
+            if service_data.type not in output[identifier]['classes']:
+                output[identifier]['classes'].append(service_data.type)
 
-    zc = zeroconf.Zeroconf()
-    listener = MyListener()
-    browser = zeroconf.ServiceBrowser(zc, "_http._tcp.local.", listener)
-    try:
-        while True:
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        zc.close() 
+            if service_data.parsed_addresses() and 'device-path' not in output[identifier]:
+                output[identifier]['device-path'] = service_data.parsed_addresses()[0]
+
+            if service_name not in output[identifier]['description']:
+                output[identifier]['description'] += f' | {service_name}:{service_data.port}'
+
+            try:
+                properties = service_data.properties
+                if properties and isinstance(properties, dict):
+                    dict_properties = dict(map(lambda tup:
+                                               map(lambda el: el.decode('ascii', errors="ignore"), tup),
+                                               properties.items()))
+
+                    # Try to find a limited and predefined list of known useful attributes:
+
+                    # for the device model name:
+                    product_name_known_keys = ['model', 'ModelName', 'am', 'rpMd', 'name']
+                    matched_keys = list(product_name_known_keys & dict_properties.keys())
+                    if matched_keys:
+                        output[identifier]['product'] = dict_properties[matched_keys[0]]
+
+                    # for additional description
+                    if 'uname' in dict_properties:
+                        output[identifier]['description'] += f'. OS: {dict_properties["uname"]}'
+
+                    if 'description' in dict_properties:
+                        output[identifier]['description'] += f'. Extra description: {dict_properties["description"]}'
+
+                    # for additional classes
+                    if 'class' in dict_properties:
+                        output[identifier]['class'].append(dict_properties['class'])
+            except:
+                # this is only to get additional info on the peripheral, if it fails, we can live without it
+                pass
+        except:
+            logging.exception(f'Unable to categorize Zeroconf peripheral {service_name} with data: {service_data}')
+            continue
+
+    return output
 
 
-def network_manager(nuvlabox_id, nuvlabox_version):
+def parse_zeroconf_devices(nb_id, nb_version, zc, listener):
+    """ Manages the Zeroconf listeners and parse the existing broadcasted services
+
+    :param nb_id: nuvlabox id
+    :param nb_version: nuvlabox version
+    :param zc: zeroconf object
+    :param listener: zeroconf listener instance
+    :return: list of peripheral documents
+    """
+
+    service_types_available = set(ZeroconfServiceTypes.find())
+
+    old_service_types = set(listener.listening_to) - service_types_available
+    new_service_types = service_types_available - set(listener.listening_to)
+
+    for new in new_service_types:
+        listener.listening_to[new] = ServiceBrowser(zc, new, listener)
+
+    for old in old_service_types:
+        listener.listening_to[old].cancel()
+        logging.info(f'Removing Zeroconf listener for service type {old}: {listener.listening_to.pop(old)}')
+
+    return format_zeroconf_services(nb_id, nb_version, listener.all_info)
+
+
+def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener):
     """
     Runs and manages the outputs from the discovery.
     """
 
     output = {}
 
+    zeroconf_output = parse_zeroconf_devices(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener)
     ssdp_output = ssdpManager(nuvlabox_id, nuvlabox_version)
     ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version)
     output['ssdp'] = ssdp_output
     output['ws-discovery'] = ws_discovery_output
+    output['zeroconf'] = zeroconf_output
     return output
-
-
-def add(data, api_url, activated_path, cookies_file):
-    """
-    Sends information from ethernet devices to Nuvla.
-    """
-    api = Api(api_url)
-
-    activated = json.load(open(activated_path))
-    api_key = activated['api-key']
-    secret_key = activated['secret-key']
-    
-    api.login_apikey(api_key, secret_key)
-
-    response = api.add('nuvlabox-peripheral', data).data
-    return response['resource-id']
-
-
-def remove(resource_id, api_url, activated_path, cookies_file):
-    """
-    Removes a ethernet device from  Nuvla.
-    """
-    api = Api(api_url)
-
-    activated = json.load(open(activated_path))
-    api_key = activated['api-key']
-    secret_key = activated['secret-key']
-    
-    api.login_apikey(api_key, secret_key)
-
-    response = api.delete(resource_id).data
-    return response['resource-id']
 
 
 def authenticate(url, insecure, activated_path):
@@ -429,21 +468,18 @@ if __name__ == "__main__":
             logging.exception(f"Waiting for {context_path} to be populated")
             e.wait(timeout=5)
 
-    old_devices = {'ssdp': {}, 'ws-discovery': {}}
+    old_devices = {'ssdp': get_saved_peripherals(peripheral_path, 'ssdp'),
+                   'ws-discovery': get_saved_peripherals(peripheral_path, 'ws-discovery'),
+                   'zeroconf': get_saved_peripherals(peripheral_path, 'zeroconf')}
 
-    zeroconf_target_service_types = [
-        '_airdroid._tcp.local.',
-        '_airdrop._tcp.local.',
-
-    ]
-    zero_conf_thread = Thread(target=zeroConfManager, args=(API_URL, NUVLABOX_ID, NUVLABOX_VERSION, peripheral_path))
-    zero_conf_thread.start()
+    zeroconf = Zeroconf()
+    zeroconf_listener = ZeroConfListener()
 
     api = authenticate(API_URL, nuvla_endpoint_insecure, activated_path)
 
     while True:
 
-        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION)
+        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION, zeroconf, zeroconf_listener)
         logging.info('CURRENT DEVICES: {}\n'.format(current_devices))
 
         for protocol in current_devices:
