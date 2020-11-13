@@ -13,6 +13,7 @@ import json
 import os
 import xmltodict
 import re
+import base64
 from threading import Event
 from nuvla.api import Api
 # Packages for Service Discovery
@@ -145,7 +146,7 @@ def get_ssdp_device_xml_as_json(url):
 
         return device_json.get('device', {})
     except:
-        logging.exception(f"Cannot get and parse XML for SSDP device info from {url}")
+        logging.warning(f"Cannot get and parse XML for SSDP device info from {url}")
         return {}
 
 
@@ -199,8 +200,12 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
             # new device
             location = device.get('location')
             device_from_location = get_ssdp_device_xml_as_json(location)    # always a dict
-            name = device_from_location.get('friendlyName',
-                                            device.get('x-friendly-name', usn))
+            if 'x-friendly-name' in device:
+                alt_name = base64.b64decode(device.get('x-friendly-name'))
+            else:
+                alt_name = usn
+
+            name = device_from_location.get('friendlyName', alt_name)
             description = device_from_location.get('modelDescription',
                                                    device.get('server', name))
 
