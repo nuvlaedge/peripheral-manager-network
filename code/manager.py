@@ -200,10 +200,12 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
             # new device
             location = device.get('location')
             device_from_location = get_ssdp_device_xml_as_json(location)    # always a dict
+            alt_name = usn
             if 'x-friendly-name' in device:
-                alt_name = base64.b64decode(device.get('x-friendly-name'))
-            else:
-                alt_name = usn
+                try:
+                    alt_name = base64.b64decode(device.get('x-friendly-name')).decode()
+                except:
+                    pass
 
             name = device_from_location.get('friendlyName', alt_name)
             description = device_from_location.get('modelDescription',
