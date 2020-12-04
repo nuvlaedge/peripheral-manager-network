@@ -27,7 +27,7 @@ scanning_interval = 30
 logging.basicConfig(level=logging.INFO)
 
 
-def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
+def wait_bootstrap(context_file, nuvla_configuration_file, peripheral_path, peripheral_paths):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -40,6 +40,20 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
         if os.path.isfile(context_file):
             is_context_file = True
             logging.info('Context file found...')
+
+    while not os.path.exists(nuvla_configuration_file):
+        time.sleep(5)
+
+    nuvla_endpoint_raw = nuvla_endpoint_insecure_raw = None
+    with open(nuvla_configuration_file) as nuvla_conf:
+        for line in nuvla_conf.read().split():
+            try:
+                if line and 'NUVLA_ENDPOINT=' in line:
+                    nuvla_endpoint_raw = line.split('=')[-1]
+                if line and 'NUVLA_ENDPOINT_INSECURE=' in line:
+                    nuvla_endpoint_insecure_raw = bool(line.split('=')[-1])
+            except IndexError:
+                pass
 
     is_peripheral = False
 
@@ -60,7 +74,7 @@ def wait_bootstrap(context_file, peripheral_path, peripheral_paths):
         time.sleep(5)
 
     logging.info('NuvlaBox has been initialized.')
-    return
+    return nuvla_endpoint_raw, nuvla_endpoint_insecure_raw
 
 
 def network_per_exists_check(peripheral_dir, protocol, device_addr):
@@ -425,28 +439,30 @@ if __name__ == "__main__":
     context_path = '/srv/nuvlabox/shared/.context'
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
+    nuvla_conf_file = '/srv/nuvlabox/shared/.nuvla-configuration'
+
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    nuvla_endpoint_insecure = os.environ["NUVLA_ENDPOINT_INSECURE"] if "NUVLA_ENDPOINT_INSECURE" in os.environ else False
-    if isinstance(nuvla_endpoint_insecure, str):
-        if nuvla_endpoint_insecure.lower() == "false":
-            nuvla_endpoint_insecure = False
-        else:
-            nuvla_endpoint_insecure = True
-    else:
-        nuvla_endpoint_insecure = bool(nuvla_endpoint_insecure)
-
-    API_URL = os.getenv("NUVLA_ENDPOINT", "nuvla.io")
-    while API_URL[-1] == "/":
-        API_URL = API_URL[:-1]
-
-    API_URL = API_URL.replace("https://", "")
+    # nuvla_endpoint_insecure = os.environ["NUVLA_ENDPOINT_INSECURE"] if "NUVLA_ENDPOINT_INSECURE" in os.environ else False
+    # if isinstance(nuvla_endpoint_insecure, str):
+    #     if nuvla_endpoint_insecure.lower() == "false":
+    #         nuvla_endpoint_insecure = False
+    #     else:
+    #         nuvla_endpoint_insecure = True
+    # else:
+    #     nuvla_endpoint_insecure = bool(nuvla_endpoint_insecure)
+    #
+    # API_URL = os.getenv("NUVLA_ENDPOINT", "nuvla.io")
+    # while API_URL[-1] == "/":
+    #     API_URL = API_URL[:-1]
+    #
+    # API_URL = API_URL.replace("https://", "")
 
     api = None
 
-    wait_bootstrap(context_path, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
+    API_URL, nuvla_endpoint_insecure = wait_bootstrap(context_path, nuvla_conf_file, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
     while True:
         try:
