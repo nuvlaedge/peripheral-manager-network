@@ -149,8 +149,11 @@ def get_ssdp_device_xml_as_json(url):
         return {}
 
     parsed_url = urlparse(url)
-    if not parsed_url.scheme:
-        url = f'http://{url}'
+    try:
+        if not parsed_url.scheme:
+            url = f'http://{url}'
+    except AttributeError:
+        return {}
 
     try:
         r = requests.get(url)
