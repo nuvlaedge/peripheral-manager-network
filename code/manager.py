@@ -438,13 +438,14 @@ if __name__ == "__main__":
     context_path = '/srv/nuvlabox/shared/.context'
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
-    API_URL = "http://localhost:5080/api/peripheral"
+    base_api_url = "http://localhost:5080/api"
+    API_URL = f"{base_api_url}/peripheral"
 
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    wait_bootstrap(context_path, API_URL, peripheral_path)
+    wait_bootstrap(context_path, base_api_url, peripheral_path)
 
     while True:
         try:
