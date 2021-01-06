@@ -26,7 +26,7 @@ scanning_interval = 30
 logging.basicConfig(level=logging.INFO)
 
 
-def wait_bootstrap(context_file, api_url, peripheral_path, peripheral_paths):
+def wait_bootstrap(context_file, api_url, peripheral_path):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -57,13 +57,6 @@ def wait_bootstrap(context_file, api_url, peripheral_path, peripheral_paths):
         logging.info('Waiting for peripheral directory...')
         
         if os.path.isdir(peripheral_path):
-            for path in peripheral_paths:
-                new_peripheral_path = peripheral_path + path
-
-                if not os.path.isdir(new_peripheral_path):
-                    os.mkdir(new_peripheral_path)
-                    logging.info('PERIPHERAL: {}'.format(new_peripheral_path))
-                
             is_peripheral = True
 
         time.sleep(5)
@@ -445,13 +438,13 @@ if __name__ == "__main__":
     context_path = '/srv/nuvlabox/shared/.context'
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
-    API_URL = "http://localhost:5080/api"
+    API_URL = "http://localhost:5080/api/peripheral"
 
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    wait_bootstrap(context_path, API_URL, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
+    wait_bootstrap(context_path, API_URL, peripheral_path)
 
     while True:
         try:
