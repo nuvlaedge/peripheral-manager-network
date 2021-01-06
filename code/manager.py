@@ -110,16 +110,6 @@ def get_saved_peripherals(api_url, protocol):
     return r.json()
 
 
-def readDeviceFile(device_addr, protocol, peripheral_dir):
-    """
-    Reads a device file from the peripheral folder.
-    """
-
-    file_path = '{}{}_{}'.format(peripheral_dir, protocol, device_addr)
-
-    return json.load(open(file_path))
-
-
 def get_ssdp_device_xml_as_json(url):
     """
     Requests and parses XML file with information from SSDP
@@ -458,9 +448,9 @@ if __name__ == "__main__":
             logging.exception(f"Waiting for {context_path} to be populated")
             e.wait(timeout=5)
 
-    old_devices = {'ssdp': get_saved_peripherals(API_URL, 'ssdp'),
-                   'ws-discovery': get_saved_peripherals(API_URL, 'ws-discovery'),
-                   'zeroconf': get_saved_peripherals(API_URL, 'zeroconf')}
+    old_devices = {'ssdp': get_saved_peripherals(API_URL, 'SSDP'),
+                   'ws-discovery': get_saved_peripherals(API_URL, 'WS-Discovery'),
+                   'zeroconf': get_saved_peripherals(API_URL, 'Bonjour/Avahi')}
 
     logging.info(f'Peripherals registered from the previous run: {old_devices}')
 
