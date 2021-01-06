@@ -15,7 +15,6 @@ import xmltodict
 import re
 import base64
 from threading import Event
-from nuvla.api import Api
 # Packages for Service Discovery
 from ssdpy import SSDPClient
 from xml.dom import minidom
@@ -27,7 +26,7 @@ scanning_interval = 30
 logging.basicConfig(level=logging.INFO)
 
 
-def wait_bootstrap(context_file, nuvla_configuration_file, peripheral_path, peripheral_paths):
+def wait_bootstrap(context_file, api_url, peripheral_path, peripheral_paths):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
@@ -41,19 +40,15 @@ def wait_bootstrap(context_file, nuvla_configuration_file, peripheral_path, peri
             is_context_file = True
             logging.info('Context file found...')
 
-    while not os.path.exists(nuvla_configuration_file):
-        time.sleep(5)
-
-    nuvla_endpoint_raw = nuvla_endpoint_insecure_raw = None
-    with open(nuvla_configuration_file) as nuvla_conf:
-        for line in nuvla_conf.read().split():
-            try:
-                if line and 'NUVLA_ENDPOINT=' in line:
-                    nuvla_endpoint_raw = line.split('=')[-1]
-                if line and 'NUVLA_ENDPOINT_INSECURE=' in line:
-                    nuvla_endpoint_insecure_raw = bool(line.split('=')[-1])
-            except IndexError:
-                pass
+    while True:
+        try:
+            logging.info(f'Waiting for {api_url}...')
+            r = requests.get(api_url + '/healthcheck')
+            r.raise_for_status()
+            if r.status_code == 200:
+                break
+        except:
+            time.sleep(5)
 
     is_peripheral = False
 
@@ -74,60 +69,52 @@ def wait_bootstrap(context_file, nuvla_configuration_file, peripheral_path, peri
         time.sleep(5)
 
     logging.info('NuvlaBox has been initialized.')
-    return nuvla_endpoint_raw, nuvla_endpoint_insecure_raw
+    return
 
 
-def network_per_exists_check(peripheral_dir, protocol, device_addr):
+def network_per_exists_check(api_url, device_addr, peripheral_dir):
     """ 
     Checks if peripheral already exists 
     """
-    if device_addr in os.listdir(f'{peripheral_dir}{protocol}'):
-        file_content = readDeviceFile(device_addr, protocol, peripheral_dir)
 
-        return True, file_content.get('resource_id')
-    return False, None
+    identifier = device_addr
+    try:
+        r = requests.get(f'{api_url}/{identifier}')
+        if r.status_code == 404:
+            return False
+        elif r.status_code == 200:
+            return True
+        else:
+            r.raise_for_status()
+    except requests.exceptions.InvalidSchema:
+        logging.error(f'The Agent API URL {api_url} seems to be malformed. Cannot continue...')
+        raise
+    except requests.exceptions.ConnectionError:
+        logging.exception(f'Cannot reach out to Agent API at {api_url}. Can be a transient issue')
+        logging.info(f'Attempting to find out if peripheral {identifier} already exists, with local search')
+        if identifier in os.listdir(f'{peripheral_dir}'):
+            return True
+        return False
+    except requests.exceptions.HTTPError as e:
+        logging.warning(f'Could not lookup peripheral {identifier}. Assuming it does not exist')
+        return False
 
 
-def get_saved_peripherals(peripheral_dir, protocol):
+def get_saved_peripherals(api_url, protocol):
     """
     To be used at bootstrap, to check for existing peripherals, just to make sure we delete old and only insert new
     peripherals, that have been modified during the NuvlaBox shutdown
 
-    :param peripheral_dir: base peripheral dir in shared volume
-    :param protocol: protocol name
+    :param api_url: url of the agent api for peripherals
+    :param protocol: protocol name = interface
     :return: map of device identifiers and content
     """
-    output = {}
 
-    for identifier in os.listdir(f'{peripheral_dir}{protocol}'):
-        file_content = readDeviceFile(identifier, protocol, peripheral_dir)
-        if 'message' in file_content:
-            output[identifier] = file_content['message']
-        else:
-            continue
+    query = f'{api_url}?parameter=interface&value={protocol}'
+    r = requests.get(query)
+    r.raise_for_status()
 
-    return output
-
-
-def createDeviceFile(protocol, device_addr, device_file, peripheral_dir):
-    """
-    Creates a device file on peripheral folder.
-    """
-
-    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
-
-    with open(file_path, 'w') as outfile:
-        json.dump(device_file, outfile)
-
-
-def removeDeviceFile(protocol, device_addr, peripheral_dir):
-    """
-    Removes a device file from the peripheral folder
-    """
-
-    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
-
-    os.unlink(file_path)
+    return r.json()
 
 
 def readDeviceFile(device_addr, protocol, peripheral_dir):
@@ -135,7 +122,7 @@ def readDeviceFile(device_addr, protocol, peripheral_dir):
     Reads a device file from the peripheral folder.
     """
 
-    file_path = '{}{}/{}'.format(peripheral_dir, protocol, device_addr)
+    file_path = '{}{}_{}'.format(peripheral_dir, protocol, device_addr)
 
     return json.load(open(file_path))
 
@@ -417,55 +404,54 @@ def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener, wsdaemon
     return output
 
 
-def authenticate(url, insecure, activated_path):
-    """ Uses the NB ApiKey credential to authenticate against Nuvla
+def post_peripheral(api_url: str, body: dict) -> dict:
+    """ Posts a new peripheral into Nuvla, via the Agent API
 
-    :return: Api client
+    :param body: content of the peripheral
+    :param api_url: URL of the Agent API for peripherals
+    :return: Nuvla resource
     """
-    api_instance = Api(endpoint='https://{}'.format(url),
-                       insecure=insecure, reauthenticate=True)
 
-    if os.path.exists(activated_path):
-        with open(activated_path) as apif:
-            apikey = json.loads(apif.read())
-    else:
-        return None
+    try:
+        r = requests.post(api_url, json=body)
+        r.raise_for_status()
+        return r.json()
+    except:
+        logging.error(f'Cannot create new peripheral in Nuvla. See agent logs for more details on the problem')
+        # this will be caught by the calling block
+        raise
 
-    api_instance.login_apikey(apikey['api-key'], apikey['secret-key'])
 
-    return api_instance
+def delete_peripheral(api_url: str, identifier: str) -> dict:
+    """ Deletes an existing peripheral from Nuvla, via the Agent API
+
+    :param identifier: peripheral identifier (same as local filename)
+    :param api_url: URL of the Agent API for peripherals
+    :return: Nuvla resource
+    """
+
+    try:
+        r = requests.delete(f'{api_url}/{identifier}')
+        r.raise_for_status()
+        return r.json()
+    except:
+        logging.error(f'Cannot delete peripheral {identifier} from Nuvla. See agent logs for more info about the issue')
+        # this will be caught by the calling block
+        raise
 
 
 if __name__ == "__main__":
 
-    activated_path = '/srv/nuvlabox/shared/.activated'
     context_path = '/srv/nuvlabox/shared/.context'
     cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
-    nuvla_conf_file = '/srv/nuvlabox/shared/.nuvla-configuration'
+    API_URL = "http://localhost:5080/api"
 
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    # nuvla_endpoint_insecure = os.environ["NUVLA_ENDPOINT_INSECURE"] if "NUVLA_ENDPOINT_INSECURE" in os.environ else False
-    # if isinstance(nuvla_endpoint_insecure, str):
-    #     if nuvla_endpoint_insecure.lower() == "false":
-    #         nuvla_endpoint_insecure = False
-    #     else:
-    #         nuvla_endpoint_insecure = True
-    # else:
-    #     nuvla_endpoint_insecure = bool(nuvla_endpoint_insecure)
-    #
-    # API_URL = os.getenv("NUVLA_ENDPOINT", "nuvla.io")
-    # while API_URL[-1] == "/":
-    #     API_URL = API_URL[:-1]
-    #
-    # API_URL = API_URL.replace("https://", "")
-
-    api = None
-
-    API_URL, nuvla_endpoint_insecure = wait_bootstrap(context_path, nuvla_conf_file, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
+    wait_bootstrap(context_path, API_URL, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
     while True:
         try:
@@ -478,9 +464,9 @@ if __name__ == "__main__":
             logging.exception(f"Waiting for {context_path} to be populated")
             e.wait(timeout=5)
 
-    old_devices = {'ssdp': get_saved_peripherals(peripheral_path, 'ssdp'),
-                   'ws-discovery': get_saved_peripherals(peripheral_path, 'ws-discovery'),
-                   'zeroconf': get_saved_peripherals(peripheral_path, 'zeroconf')}
+    old_devices = {'ssdp': get_saved_peripherals(API_URL, 'ssdp'),
+                   'ws-discovery': get_saved_peripherals(API_URL, 'ws-discovery'),
+                   'zeroconf': get_saved_peripherals(API_URL, 'zeroconf')}
 
     logging.info(f'Peripherals registered from the previous run: {old_devices}')
 
@@ -488,8 +474,6 @@ if __name__ == "__main__":
     zeroconf_listener = ZeroConfListener()
 
     wsdaemon = WSDiscovery()
-
-    api = authenticate(API_URL, nuvla_endpoint_insecure, activated_path)
 
     while True:
 
@@ -508,8 +492,8 @@ if __name__ == "__main__":
 
                 for device in publishing:
 
-                    peripheral_already_registered, res_id = \
-                        network_per_exists_check(peripheral_path, protocol, device)
+                    peripheral_already_registered = \
+                        network_per_exists_check(API_URL, device, peripheral_path)
 
                     old_devices[protocol][device] = current_devices[protocol][device]
 
@@ -517,36 +501,25 @@ if __name__ == "__main__":
 
                         logging.info('PUBLISHING: {}'.format(current_devices[protocol][device]))
                         try:
-                            resource_id = api.add('nuvlabox-peripheral', current_devices[protocol][device]).data['resource-id']
+                            resource = post_peripheral(API_URL, current_devices[protocol][device])
                         except:
                             logging.exception(f'Unable to publish peripheral {device}')
                             continue
-
-                        createDeviceFile(protocol,
-                                         device,
-                                         {'resource_id': resource_id,
-                                          'message': current_devices[protocol][device]},
-                                         peripheral_path)
 
                 for device in removing:
 
                     logging.info('REMOVING: {}'.format(old_devices[protocol][device]))
 
-                    peripheral_already_registered, res_id = \
-                        network_per_exists_check(peripheral_path, protocol, device)
+                    peripheral_already_registered = \
+                        network_per_exists_check(API_URL, device, peripheral_path)
 
-                    if res_id:
+                    if peripheral_already_registered:
                         try:
-                            r = api.delete(res_id).data
+                            resource = delete_peripheral(API_URL, device)
                         except:
-                            logging.exception(f'Cannot delete {res_id} from Nuvla. Local delete only')
+                            logging.exception(f'Cannot delete {device} from Nuvla')
                     else:
-                        logging.warning(f'Unable to retrieve ID of locally registered device {device}. Local delete only')
-
-                    try:
-                        removeDeviceFile(protocol, device, peripheral_path)
-                    except FileNotFoundError:
-                        logging.warning(f'Peripheral file {device} does not exist. Considered deleted')
+                        logging.warning(f'{protocol} peripheral {device} seems to have been removed already')
 
                     del old_devices[protocol][device]
 
