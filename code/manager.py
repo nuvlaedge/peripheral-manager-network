@@ -423,6 +423,41 @@ def delete_peripheral(api_url: str, identifier: str) -> dict:
         raise
 
 
+def remove_legacy_peripherals(api_url: str, peripherals_dir: str, protocols: list):
+    """ In previous versions of this component, the peripherals were stored in an incompatible manner.
+    To avoid duplicates, before starting this component, we make sure all legacy peripherals are deleted
+
+    :param api_url: agent api url for peripherals
+    :param peripherals_dir: path to peripherals dir
+    :param protocols: list of protocols to look for
+    :return:
+    """
+
+    for proto in protocols:
+        if not proto:
+            # just to be sure we don't delete the top directory
+            continue
+
+        path = f'{peripherals_dir}{proto}'
+        if os.path.isdir(path):
+            for legacy_peripheral in os.listdir(path):
+                with open(f'{path}/{legacy_peripheral}') as lp:
+                    nuvla_id = json.load(lp).get("resource_id")
+
+                # if it has a nuvla_id, there it must be removed from Nuvla
+                if nuvla_id:
+                    try:
+                        delete_peripheral(api_url, f"{proto}/{legacy_peripheral}")
+                        continue
+                    except:
+                        pass
+
+                os.remove(f'{path}/{legacy_peripheral}')
+
+            # by now, dir must be empty, so this shall work
+            os.rmdir(path)
+
+
 if __name__ == "__main__":
 
     context_path = '/srv/nuvlabox/shared/.context'
@@ -447,6 +482,8 @@ if __name__ == "__main__":
         except (json.decoder.JSONDecodeError, KeyError):
             logging.exception(f"Waiting for {context_path} to be populated")
             e.wait(timeout=5)
+
+    remove_legacy_peripherals(API_URL, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
     old_devices = {'ssdp': get_saved_peripherals(API_URL, 'SSDP'),
                    'ws-discovery': get_saved_peripherals(API_URL, 'WS-Discovery'),
