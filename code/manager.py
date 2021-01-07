@@ -82,8 +82,8 @@ def network_per_exists_check(api_url, device_addr, peripheral_dir):
     except requests.exceptions.InvalidSchema:
         logging.error(f'The Agent API URL {api_url} seems to be malformed. Cannot continue...')
         raise
-    except requests.exceptions.ConnectionError:
-        logging.exception(f'Cannot reach out to Agent API at {api_url}. Can be a transient issue')
+    except requests.exceptions.ConnectionError as ex:
+        logging.error(f'Cannot reach out to Agent API at {api_url}. Can be a transient issue: {str(ex)}')
         logging.info(f'Attempting to find out if peripheral {identifier} already exists, with local search')
         if identifier in os.listdir(f'{peripheral_dir}'):
             return True
