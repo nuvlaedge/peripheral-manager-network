@@ -48,7 +48,7 @@ def wait_bootstrap(context_file, api_url, peripheral_path):
             if r.status_code == 200:
                 break
         except:
-            time.sleep(5)
+            time.sleep(15)
 
     is_peripheral = False
 
@@ -529,8 +529,8 @@ if __name__ == "__main__":
                         logging.info('PUBLISHING: {}'.format(current_devices[protocol][device]))
                         try:
                             resource = post_peripheral(API_URL, current_devices[protocol][device])
-                        except Exception as e:
-                            logging.error(f'Unable to publish peripheral {device}: {str(e)}')
+                        except Exception as ex:
+                            logging.error(f'Unable to publish peripheral {device}: {str(ex)}')
                             continue
 
                     old_devices[protocol][device] = current_devices[protocol][device]
