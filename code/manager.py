@@ -458,11 +458,12 @@ def remove_legacy_peripherals(api_url: str, peripherals_dir: str, protocols: lis
                     except:
                         pass
 
-                logging.warning(f'Removed legacy peripheral {proto}/{legacy_peripheral}. If it still exists, it shall be re-created.')
+                logging.info(f'Removed legacy peripheral {proto}/{legacy_peripheral}. If it still exists, it shall be re-created.')
                 os.remove(f'{path}/{legacy_peripheral}')
 
             # by now, dir must be empty, so this shall work
             os.rmdir(path)
+            logging.info(f'Removed all legacy peripherals for interface {proto}: {path}')
 
 
 if __name__ == "__main__":
