@@ -524,16 +524,16 @@ if __name__ == "__main__":
                     peripheral_already_registered = \
                         network_per_exists_check(API_URL, device, peripheral_path)
 
-                    old_devices[protocol][device] = current_devices[protocol][device]
-
                     if not peripheral_already_registered:
 
                         logging.info('PUBLISHING: {}'.format(current_devices[protocol][device]))
                         try:
                             resource = post_peripheral(API_URL, current_devices[protocol][device])
-                        except:
-                            logging.exception(f'Unable to publish peripheral {device}')
+                        except Exception as e:
+                            logging.error(f'Unable to publish peripheral {device}: {str(e)}')
                             continue
+
+                    old_devices[protocol][device] = current_devices[protocol][device]
 
                 for device in removing:
 
@@ -547,6 +547,7 @@ if __name__ == "__main__":
                             resource = delete_peripheral(API_URL, device)
                         except:
                             logging.exception(f'Cannot delete {device} from Nuvla')
+                            continue
                     else:
                         logging.warning(f'{protocol} peripheral {device} seems to have been removed already')
 
