@@ -405,16 +405,22 @@ def post_peripheral(api_url: str, body: dict) -> dict:
         raise
 
 
-def delete_peripheral(api_url: str, identifier: str) -> dict:
+def delete_peripheral(api_url: str, identifier: str, resource_id=None) -> dict:
     """ Deletes an existing peripheral from Nuvla, via the Agent API
 
     :param identifier: peripheral identifier (same as local filename)
     :param api_url: URL of the Agent API for peripherals
+    :param resource_id: peripheral resource ID in Nuvla
     :return: Nuvla resource
     """
 
+    if resource_id:
+        url = f'{api_url}/{identifier}?id={resource_id}'
+    else:
+        url = f'{api_url}/{identifier}'
+
     try:
-        r = requests.delete(f'{api_url}/{identifier}')
+        r = requests.delete(url)
         r.raise_for_status()
         return r.json()
     except:
@@ -447,11 +453,12 @@ def remove_legacy_peripherals(api_url: str, peripherals_dir: str, protocols: lis
                 # if it has a nuvla_id, there it must be removed from Nuvla
                 if nuvla_id:
                     try:
-                        delete_peripheral(api_url, f"{proto}/{legacy_peripheral}")
+                        delete_peripheral(api_url, f"{proto}/{legacy_peripheral}", resource_id=nuvla_id)
                         continue
                     except:
                         pass
 
+                logging.warning(f'Removed legacy peripheral {proto}/{legacy_peripheral}. If it still exists, it shall be re-created.')
                 os.remove(f'{path}/{legacy_peripheral}')
 
             # by now, dir must be empty, so this shall work
