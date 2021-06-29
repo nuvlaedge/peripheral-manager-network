@@ -24,22 +24,15 @@ from zeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
 
 scanning_interval = 30
 logging.basicConfig(level=logging.INFO)
+KUBERNETES_SERVICE_HOST = os.getenv('KUBERNETES_SERVICE_HOST')
+namespace = os.getenv('MY_NAMESPACE', 'nuvlabox')
 
-
-def wait_bootstrap(context_file, api_url, peripheral_path):
+def wait_bootstrap(api_url):
     """
     Waits for the NuvlaBox to finish bootstrapping, by checking
         the context file.
     :returns
     """
-    is_context_file = False
-
-    while not is_context_file:
-        time.sleep(5)
-        if os.path.isfile(context_file):
-            is_context_file = True
-            logging.info('Context file found...')
-
     while True:
         try:
             logging.info(f'Waiting for {api_url}...')
@@ -49,17 +42,6 @@ def wait_bootstrap(context_file, api_url, peripheral_path):
                 break
         except:
             time.sleep(15)
-
-    is_peripheral = False
-
-    while not is_peripheral:
-
-        logging.info('Waiting for peripheral directory...')
-        
-        if os.path.isdir(peripheral_path):
-            is_peripheral = True
-
-        time.sleep(5)
 
     logging.info('NuvlaBox has been initialized.')
     return
@@ -137,7 +119,7 @@ def get_ssdp_device_xml_as_json(url):
         return {}
 
 
-def ssdpManager(nuvlabox_id, nuvlabox_version):
+def ssdpManager():
     """
     Manages SSDP discoverable devices (SSDP and UPnP devices)
     """
@@ -199,8 +181,6 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
                                                    device.get('server', name))
 
             output['peripherals'][identifier] = {
-                "parent": nuvlabox_id,
-                "version": nuvlabox_version,
                 'classes': [device_class],
                 'available': True,
                 'identifier': identifier,
@@ -227,7 +207,7 @@ def ssdpManager(nuvlabox_id, nuvlabox_version):
     return output['peripherals']
 
 
-def wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon):
+def wsDiscoveryManager(wsdaemon):
     """
     Manages WSDiscovery discoverable devices
     """
@@ -242,8 +222,6 @@ def wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon):
         name = " | ".join(classes)
         if identifier not in manager.keys():
             output = {
-                "parent": nuvlabox_id,
-                "version": nuvlabox_version,
                 "available": True,
                 "name": name,
                 "description": f"[wsdiscovery peripheral] {str(service.getEPR())} | Scopes: {', '.join([str(s) for s in service.getScopes()])}",
@@ -277,7 +255,7 @@ class ZeroConfListener:
         self.all_info[name] = info
 
 
-def format_zeroconf_services(nb_id, nb_version, services):
+def format_zeroconf_services(services):
     """ Formats the Zeroconf listener services into a Nuvla compliant data format
 
     :param services: list of zeroconf services from lister, i.e. list = {'service_name': ServiceInfo, ...}
@@ -292,10 +270,8 @@ def format_zeroconf_services(nb_id, nb_version, services):
 
             if identifier not in output:
                 output[identifier] = {
-                    'parent': nb_id,
                     'name': service_data.server,
                     'description': f'{service_name}:{service_data.port}',
-                    'version': nb_version,
                     'identifier': identifier,
                     'available': True,
                     'interface': "Bonjour/Avahi",
@@ -346,7 +322,7 @@ def format_zeroconf_services(nb_id, nb_version, services):
     return output
 
 
-def parse_zeroconf_devices(nb_id, nb_version, zc, listener):
+def parse_zeroconf_devices(zc, listener):
     """ Manages the Zeroconf listeners and parse the existing broadcasted services
 
     :param nb_id: nuvlabox id
@@ -368,19 +344,19 @@ def parse_zeroconf_devices(nb_id, nb_version, zc, listener):
         listener.listening_to[old].cancel()
         logging.info(f'Removing Zeroconf listener for service type {old}: {listener.listening_to.pop(old)}')
 
-    return format_zeroconf_services(nb_id, nb_version, listener.all_info)
+    return format_zeroconf_services(listener.all_info)
 
 
-def network_manager(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener, wsdaemon):
+def network_manager(zc_obj, zc_listener, wsdaemon):
     """
     Runs and manages the outputs from the discovery.
     """
 
     output = {}
 
-    zeroconf_output = parse_zeroconf_devices(nuvlabox_id, nuvlabox_version, zc_obj, zc_listener)
-    ssdp_output = ssdpManager(nuvlabox_id, nuvlabox_version)
-    ws_discovery_output = wsDiscoveryManager(nuvlabox_id, nuvlabox_version, wsdaemon)
+    zeroconf_output = parse_zeroconf_devices(zc_obj, zc_listener)
+    ssdp_output = ssdpManager()
+    ws_discovery_output = wsDiscoveryManager(wsdaemon)
     output['ssdp'] = ssdp_output
     output['ws-discovery'] = ws_discovery_output
     output['zeroconf'] = zeroconf_output
@@ -468,28 +444,16 @@ def remove_legacy_peripherals(api_url: str, peripherals_dir: str, protocols: lis
 
 if __name__ == "__main__":
 
-    context_path = '/srv/nuvlabox/shared/.context'
-    cookies_file = '/srv/nuvlabox/shared/cookies'
     peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
-    base_api_url = "http://localhost:5080/api"
+    agent_api_endpoint = 'localhost:5080' if not KUBERNETES_SERVICE_HOST else f'agent.{namespace}'
+    base_api_url = f"http://{agent_api_endpoint}/api"
     API_URL = f"{base_api_url}/peripheral"
 
     e = Event()
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    wait_bootstrap(context_path, base_api_url, peripheral_path)
-
-    while True:
-        try:
-            with open(context_path) as c:
-                context = json.loads(c.read())
-            NUVLABOX_VERSION = context['version']
-            NUVLABOX_ID = context['id']
-            break
-        except (json.decoder.JSONDecodeError, KeyError):
-            logging.exception(f"Waiting for {context_path} to be populated")
-            e.wait(timeout=5)
+    wait_bootstrap(API_URL)
 
     remove_legacy_peripherals(API_URL, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
@@ -506,7 +470,7 @@ if __name__ == "__main__":
 
     while True:
 
-        current_devices = network_manager(NUVLABOX_ID, NUVLABOX_VERSION, zeroconf, zeroconf_listener, wsdaemon)
+        current_devices = network_manager(zeroconf, zeroconf_listener, wsdaemon)
         logging.info('CURRENT DEVICES: {}'.format(current_devices))
 
         for protocol in current_devices:
