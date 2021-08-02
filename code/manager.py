@@ -453,7 +453,7 @@ if __name__ == "__main__":
 
     logging.info('NETWORK PERIPHERAL MANAGER STARTED')
 
-    wait_bootstrap(API_URL)
+    wait_bootstrap(base_api_url)
 
     remove_legacy_peripherals(API_URL, peripheral_path, ['ssdp', 'ws-discovery', 'zeroconf'])
 
