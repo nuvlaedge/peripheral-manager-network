@@ -1,4 +1,4 @@
-FROM python:3.9-alpine as builder
+FROM python:3.9-alpine3.12 as builder
 
 COPY code/requirements.txt /opt/nuvlabox/
 
@@ -7,7 +7,7 @@ RUN apk update && apk add --no-cache gcc musl-dev linux-headers
 RUN pip install -r /opt/nuvlabox/requirements.txt
 
 # ----
-FROM python:3.9-alpine
+FROM python:3.9-alpine3.12
 
 ARG GIT_BRANCH
 ARG GIT_COMMIT_ID
