@@ -48,8 +48,8 @@ def wait_bootstrap(api_url):
 
 
 def network_per_exists_check(api_url, device_addr, peripheral_dir):
-    """ 
-    Checks if peripheral already exists 
+    """
+    Checks if peripheral already exists
     """
 
     identifier = device_addr
@@ -354,7 +354,10 @@ def network_manager(zc_obj, zc_listener, wsdaemon):
 
     output = {}
 
-    zeroconf_output = parse_zeroconf_devices(zc_obj, zc_listener)
+    if zc_obj:
+        zeroconf_output = parse_zeroconf_devices(zc_obj, zc_listener)
+    else:
+        zeroconf_output = {}
     ssdp_output = ssdpManager()
     ws_discovery_output = wsDiscoveryManager(wsdaemon)
     output['ssdp'] = ssdp_output
@@ -463,8 +466,13 @@ if __name__ == "__main__":
 
     logging.info(f'Peripherals registered from the previous run: {old_devices}')
 
-    zeroconf = Zeroconf()
-    zeroconf_listener = ZeroConfListener()
+    try:
+        zeroconf = Zeroconf()
+    except OSError as e:
+        logging.error(f'Zeroconf failed to start and cannot be fixed without a restart: {str(e)}')
+        zeroconf = zeroconf_listener = None
+    else:
+        zeroconf_listener = ZeroConfListener()
 
     wsdaemon = WSDiscovery()
 
