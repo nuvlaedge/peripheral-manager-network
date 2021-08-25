@@ -468,8 +468,8 @@ if __name__ == "__main__":
 
     try:
         zeroconf = Zeroconf()
-    except OSError as e:
-        logging.error(f'Zeroconf failed to start and cannot be fixed without a restart: {str(e)}')
+    except OSError as ex:
+        logging.error(f'Zeroconf failed to start and cannot be fixed without a restart: {str(ex)}')
         zeroconf = zeroconf_listener = None
     else:
         zeroconf_listener = ZeroConfListener()
