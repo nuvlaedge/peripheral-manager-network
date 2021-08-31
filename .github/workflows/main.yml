@@ -1,6 +1,6 @@
 name: "NuvlaBox Component Build"
 
-on: 
+on:
   push:
     branches:
       - '**'
@@ -8,7 +8,7 @@ on:
       - '*.*.*'
   pull_request:
   workflow_dispatch:
-    
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
@@ -28,6 +28,18 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.SIXSQ_DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.SIXSQ_DOCKER_PASSWORD }}
         run: ./container-release.sh
+
+      - name: Get component dependencies
+        run: ./get-dependencies-tree.sh
+
+      - name: Keep list of dependencies as an artifact
+        uses: actions/upload-artifact@v2
+        if: ${{ success() }}
+        with:
+          name: dependencies
+          path: |
+            dependencies-tree.png
+            dependencies-licenses.txt
 
   notify:
     if: always()

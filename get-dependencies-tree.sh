@@ -1,0 +1,22 @@
+#!/bin/sh
+
+ignore_pkgs="pipdeptree,pip-licenses,graphviz,pip,wheel,setuptools"
+
+cat>get-deps.sh <<EOF
+#!/bin/sh
+
+pip install pipdeptree pip-licenses graphviz
+apk update && apk add graphviz ttf-freefont
+
+pipdeptree --graph-output png -e $ignore_pkgs > dependencies-tree.png
+
+pip-licenses -i $ignore_pkgs > dependencies-licenses.txt
+EOF
+
+chmod +x get-deps.sh
+
+docker build . -t local_test_image
+
+docker run --entrypoint /bin/sh -v $(pwd):/deptree --workdir /deptree local_test_image /deptree/get-deps.sh
+
+rm get-deps.sh
