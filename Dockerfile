@@ -25,8 +25,8 @@ LABEL org.opencontainers.image.authors="support@sixsq.com"
 LABEL org.opencontainers.image.created=${GIT_BUILD_TIME}
 LABEL org.opencontainers.image.url=${PROJECT_URL}
 LABEL org.opencontainers.image.vendor="SixSq SA"
-LABEL org.opencontainers.image.title="NuvlaBox System Manager"
-LABEL org.opencontainers.image.description="Manages the overall state of the NuvlaBox Engine"
+LABEL org.opencontainers.image.title="NuvlaBox Peripheral Manager Network"
+LABEL org.opencontainers.image.description="Finds and identifies network peripherals in the vicinity of the NuvlaBox"
 
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 
