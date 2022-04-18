@@ -254,6 +254,8 @@ class ZeroConfListener:
         logging.info(f"[zeroconf] Service {name} added")
         self.all_info[name] = info
 
+    update_service = add_service
+
 
 def format_zeroconf_services(services):
     """ Formats the Zeroconf listener services into a Nuvla compliant data format
@@ -338,7 +340,10 @@ def parse_zeroconf_devices(zc, listener):
     new_service_types = service_types_available - set(listener.listening_to)
 
     for new in new_service_types:
-        listener.listening_to[new] = ServiceBrowser(zc, new, listener)
+        try:
+            listener.listening_to[new] = ServiceBrowser(zc, new, listener)
+        except Exception:
+            logging.exception(f'Zeroconf exception in ServiceBrowser(zc={zc}, new={new}, listener={listener})')
 
     for old in old_service_types:
         listener.listening_to[old].cancel()
