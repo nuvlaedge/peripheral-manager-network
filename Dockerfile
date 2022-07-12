@@ -1,4 +1,5 @@
-FROM python:3.9-alpine3.12 as builder
+ARG BASE_IMAGE=python:3.8-alpine3.12
+FROM ${BASE_IMAGE} as builder
 
 COPY code/requirements.txt /opt/nuvlabox/
 
@@ -7,7 +8,7 @@ RUN apk update && apk add --no-cache gcc musl-dev linux-headers
 RUN pip install -r /opt/nuvlabox/requirements.txt
 
 # ----
-FROM python:3.9-alpine3.12
+FROM ${BASE_IMAGE}
 
 ARG GIT_BRANCH
 ARG GIT_COMMIT_ID
@@ -28,7 +29,7 @@ LABEL org.opencontainers.image.vendor="SixSq SA"
 LABEL org.opencontainers.image.title="NuvlaBox Peripheral Manager Network"
 LABEL org.opencontainers.image.description="Finds and identifies network peripherals in the vicinity of the NuvlaBox"
 
-COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
 
 COPY code/ LICENSE /opt/nuvlabox/
 
@@ -36,4 +37,4 @@ WORKDIR /opt/nuvlabox/
 
 ONBUILD RUN ./license.sh
 
-ENTRYPOINT ["python", "manager.py"]
+ENTRYPOINT ["python", "network_manager.py"]
