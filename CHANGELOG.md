@@ -1,4 +1,8 @@
 # Changelog
+## [1.2.0] - 2022-07-18
+### Added
+### Changed
+ - Use common base image for all NE components
 ## Unreleased
 ### Changed
 - Downgraded from python 3.9 to 3.8 to synchronize all components
