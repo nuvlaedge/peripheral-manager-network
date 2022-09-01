@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-"""NuvlaBox Peripheral Manager Network
+"""NuvlaEdge Peripheral Manager Network
 This service provides network devices discovery.
 """
 
@@ -25,11 +25,11 @@ from zeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
 scanning_interval = 30
 logging.basicConfig(level=logging.INFO)
 KUBERNETES_SERVICE_HOST = os.getenv('KUBERNETES_SERVICE_HOST')
-namespace = os.getenv('MY_NAMESPACE', 'nuvlabox')
+namespace = os.getenv('MY_NAMESPACE', 'nuvlaedge')
 
 def wait_bootstrap(api_url):
     """
-    Waits for the NuvlaBox to finish bootstrapping, by checking
+    Waits for the NuvlaEdge to finish bootstrapping, by checking
         the context file.
     :returns
     """
@@ -43,7 +43,7 @@ def wait_bootstrap(api_url):
         except:
             time.sleep(15)
 
-    logging.info('NuvlaBox has been initialized.')
+    logging.info('NuvlaEdge has been initialized.')
     return
 
 
@@ -78,7 +78,7 @@ def network_per_exists_check(api_url, device_addr, peripheral_dir):
 def get_saved_peripherals(api_url, protocol):
     """
     To be used at bootstrap, to check for existing peripherals, just to make sure we delete old and only insert new
-    peripherals, that have been modified during the NuvlaBox shutdown
+    peripherals, that have been modified during the NuvlaEdge shutdown
 
     :param api_url: url of the agent api for peripherals
     :param protocol: protocol name = interface
@@ -327,8 +327,8 @@ def format_zeroconf_services(services):
 def parse_zeroconf_devices(zc, listener):
     """ Manages the Zeroconf listeners and parse the existing broadcasted services
 
-    :param nb_id: nuvlabox id
-    :param nb_version: nuvlabox version
+    :param nb_id: nuvlaedge id
+    :param nb_version: nuvlaedge version
     :param zc: zeroconf object
     :param listener: zeroconf listener instance
     :return: list of peripheral documents
@@ -452,7 +452,7 @@ def remove_legacy_peripherals(api_url: str, peripherals_dir: str, protocols: lis
 
 if __name__ == "__main__":
 
-    peripheral_path = '/srv/nuvlabox/shared/.peripherals/'
+    peripheral_path = '/srv/nuvlaedge/shared/.peripherals/'
     agent_api_endpoint = 'localhost:5080' if not KUBERNETES_SERVICE_HOST else f'agent.{namespace}'
     base_api_url = f"http://{agent_api_endpoint}/api"
     API_URL = f"{base_api_url}/peripheral"

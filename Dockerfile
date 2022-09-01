@@ -1,11 +1,11 @@
 ARG BASE_IMAGE=python:3.8-alpine3.12
 FROM ${BASE_IMAGE} as builder
 
-COPY code/requirements.txt /opt/nuvlabox/
+COPY code/requirements.txt /opt/nuvlaedge/
 
 RUN apk update && apk add --no-cache gcc musl-dev linux-headers
 
-RUN pip install -r /opt/nuvlabox/requirements.txt
+RUN pip install -r /opt/nuvlaedge/requirements.txt
 
 # ----
 FROM ${BASE_IMAGE}
@@ -26,14 +26,14 @@ LABEL org.opencontainers.image.authors="support@sixsq.com"
 LABEL org.opencontainers.image.created=${GIT_BUILD_TIME}
 LABEL org.opencontainers.image.url=${PROJECT_URL}
 LABEL org.opencontainers.image.vendor="SixSq SA"
-LABEL org.opencontainers.image.title="NuvlaBox Peripheral Manager Network"
-LABEL org.opencontainers.image.description="Finds and identifies network peripherals in the vicinity of the NuvlaBox"
+LABEL org.opencontainers.image.title="NuvlaEdge Peripheral Manager Network"
+LABEL org.opencontainers.image.description="Finds and identifies network peripherals in the vicinity of the NuvlaEdge"
 
 COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
 
-COPY code/ LICENSE /opt/nuvlabox/
+COPY code/ LICENSE /opt/nuvlaedge/
 
-WORKDIR /opt/nuvlabox/
+WORKDIR /opt/nuvlaedge/
 
 ONBUILD RUN ./license.sh
 
