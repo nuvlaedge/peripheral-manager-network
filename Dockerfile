@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=python:3.8-alpine3.12
+ARG BASE_IMAGE=python:3.10.10-alpine3.17
 FROM ${BASE_IMAGE} as builder
 
 COPY code/requirements.txt /opt/nuvlaedge/
@@ -29,7 +29,7 @@ LABEL org.opencontainers.image.vendor="SixSq SA"
 LABEL org.opencontainers.image.title="NuvlaEdge Peripheral Manager Network"
 LABEL org.opencontainers.image.description="Finds and identifies network peripherals in the vicinity of the NuvlaEdge"
 
-COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
 COPY code/ LICENSE /opt/nuvlaedge/
 
