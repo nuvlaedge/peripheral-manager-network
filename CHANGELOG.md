@@ -1,4 +1,7 @@
 # Changelog
+## Unreleased
+### Added
+ - Integration within the nuvlaedge-common library
 ## [1.3.0] - 2022-09-01
 ### Added
 ### Changed
