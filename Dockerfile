@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=python:3.8-alpine3.12
+ARG BASE_IMAGE=nuvladev/nuvlaedge-base:latest
 FROM ${BASE_IMAGE} as builder
 
 COPY code/requirements.txt /opt/nuvlaedge/
