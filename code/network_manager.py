@@ -32,34 +32,6 @@ KUBERNETES_SERVICE_HOST = os.getenv('KUBERNETES_SERVICE_HOST')
 namespace = os.getenv('MY_NAMESPACE', 'nuvlaedge')
 
 
-def network_per_exists_check(api_url, device_addr, peripheral_dir):
-    """
-    Checks if peripheral already exists
-    """
-
-    identifier = device_addr
-    try:
-        r = requests.get(f'{api_url}/{identifier}')
-        if r.status_code == 404:
-            return False
-        elif r.status_code == 200:
-            return True
-        else:
-            r.raise_for_status()
-    except requests.exceptions.InvalidSchema:
-        logger.error(f'The Agent API URL {api_url} seems to be malformed. Cannot continue...')
-        raise
-    except requests.exceptions.ConnectionError as ex:
-        logger.error(f'Cannot reach out to Agent API at {api_url}. Can be a transient issue: {str(ex)}')
-        logger.info(f'Attempting to find out if peripheral {identifier} already exists, with local search')
-        if identifier in os.listdir(f'{peripheral_dir}'):
-            return True
-        return False
-    except requests.exceptions.HTTPError as e:
-        logger.warning(f'Could not lookup peripheral {identifier}. Assuming it does not exist')
-        return False
-
-
 def get_ssdp_device_xml_as_json(url):
     """
     Requests and parses XML file with information from SSDP
@@ -295,8 +267,6 @@ def format_zeroconf_services(services):
 def parse_zeroconf_devices(zc, listener):
     """ Manages the Zeroconf listeners and parse the existing broadcasted services
 
-    :param nb_id: nuvlaedge id
-    :param nb_version: nuvlaedge version
     :param zc: zeroconf object
     :param listener: zeroconf listener instance
     :return: list of peripheral documents
@@ -338,48 +308,6 @@ def network_manager(**kwargs):
     output.update(zeroconf_output)
 
     return output
-
-
-def post_peripheral(api_url: str, body: dict) -> dict:
-    """ Posts a new peripheral into Nuvla, via the Agent API
-
-    :param body: content of the peripheral
-    :param api_url: URL of the Agent API for peripherals
-    :return: Nuvla resource
-    """
-    print(json.dumps(body, indent=4))
-    try:
-        r = requests.post(api_url, json=body)
-        r.raise_for_status()
-        return r.json()
-    except:
-        logger.error(f'Cannot create new peripheral in Nuvla. See agent logs for more details on the problem')
-        # this will be caught by the calling block
-        raise
-
-
-def delete_peripheral(api_url: str, identifier: str, resource_id=None) -> dict:
-    """ Deletes an existing peripheral from Nuvla, via the Agent API
-
-    :param identifier: peripheral identifier (same as local filename)
-    :param api_url: URL of the Agent API for peripherals
-    :param resource_id: peripheral resource ID in Nuvla
-    :return: Nuvla resource
-    """
-
-    if resource_id:
-        url = f'{api_url}/{identifier}?id={resource_id}'
-    else:
-        url = f'{api_url}/{identifier}'
-
-    try:
-        r = requests.delete(url)
-        r.raise_for_status()
-        return r.json()
-    except:
-        logger.error(f'Cannot delete peripheral {identifier} from Nuvla. See agent logs for more info about the issue')
-        # this will be caught by the calling block
-        raise
 
 
 if __name__ == '__main__':
